@@ -1,0 +1,4 @@
+# Giữ LF cho file chạy trong WSL, tránh lỗi CRLF khi checkout trên Windows
+*.sh     text eol=lf
+*.py     text eol=lf
+Makefile text eol=lf

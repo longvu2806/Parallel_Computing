@@ -1,0 +1,30 @@
+# Tài liệu nội bộ (báo cáo, slide, đề bài)
+/docx/
+
+# Sản phẩm build
+/build/
+*.o
+*.obj
+*.exe
+*.out
+
+# Dữ liệu lớn (được sinh lại bằng script)
+/data/large/
+
+# Profiling
+perf.data*
+gmon.out
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor và hệ điều hành
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# File tạm của Office
+~$*
