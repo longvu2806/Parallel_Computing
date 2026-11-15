@@ -7,7 +7,7 @@ Kho mã nguồn đồ án nhóm môn Lập trình tính toán song song, gồm h
 | Bài chung | Tính tích vô hướng của hai vector |
 | Bài riêng (Chủ đề 5) | Nhân ma trận theo khối, tối ưu locality: so sánh bản tuần tự chuẩn với bản chia block/tile, khảo sát block size, thứ tự vòng lặp, vectorization/shared memory và ít nhất hai cách phân hoạch |
 
-> **Trạng thái:** đã dựng khung kho mã. Các file nguồn hiện là stub, chưa có thuật toán và chưa có kết quả đo.
+> **Trạng thái:** đã dựng khung kho mã và giao diện thử nghiệm (`ui/`). Các file nguồn C++ hiện là stub, chưa có thuật toán và chưa có kết quả đo.
 
 ## Công nghệ
 
@@ -51,6 +51,11 @@ parallel_computing/
 ├── results/
 │   ├── raw/                CSV/JSON thô từ thí nghiệm
 │   └── figures/            Biểu đồ sinh từ raw/
+│
+├── ui/                     Giao diện thử nghiệm (không dùng để đo số liệu báo cáo)
+│   ├── server.py           Server cục bộ, chỉ dùng thư viện chuẩn của Python
+│   ├── programs.json       Khai báo các chương trình hiện trên giao diện
+│   └── static/             index.html, app.js, style.css
 │
 └── docx/                   Tài liệu nội bộ, không đưa lên Git
 ```
@@ -113,6 +118,190 @@ pip install numpy pandas matplotlib
 - Shell UCRT64 không thấy `git` và `python` đã cài trên Windows.
 - Chương trình dùng OpenMP cần `libgomp-1.dll` của MSYS2, nên có thể không chạy được từ PowerShell nếu `C:\msys64\ucrt64\bin` không nằm trong PATH.
 - Không dùng MinGW.org ở `C:\MinGW`: bản này 32-bit và không link được OpenMP. Nếu máy còn bản này trong PATH, `gcc` trong PowerShell có thể gọi nhầm nó.
+
+## Giao diện thử nghiệm
+
+Giao diện web chạy trên máy mình để thử nhanh các bản tuần tự và song song trên cùng một bộ dữ liệu, xem kết quả và so sánh. **Chỉ dùng để thử và gỡ lỗi**; số liệu đưa vào báo cáo phải đo bằng `scripts/run_experiments.sh`.
+
+**Chạy:**
+
+1. Build trong MSYS2 UCRT64: `make`.
+2. Trong PowerShell, ở thư mục gốc repo:
+
+   ```powershell
+   python ui/server.py --open
+   ```
+
+3. Trình duyệt mở http://127.0.0.1:8000. Dừng server bằng Ctrl+C.
+
+Không cần cài thêm thư viện Python nào. Server tự thêm `C:\msys64\ucrt64\bin` vào PATH khi chạy chương trình, nên chương trình OpenMP tìm được `libgomp-1.dll`.
+
+| Tùy chọn | Mặc định | Ý nghĩa |
+|---|---|---|
+| `--port` | `8000` | Cổng lắng nghe; server chỉ nhận kết nối từ chính máy này (127.0.0.1) |
+| `--build-dir` | `build` | Thư mục chứa file `.exe`, tương đối với thư mục gốc repo |
+| `--msys2-bin` | `C:\msys64\ucrt64\bin` | Thư mục DLL của MSYS2 UCRT64 |
+| `--timeout` | `120` | Giới hạn thời gian mỗi lần chạy, tính bằng giây |
+| `--open` | tắt | Tự mở trình duyệt |
+
+**Cách dùng:**
+
+1. Chọn tab **Tích vô hướng** hoặc **Nhân ma trận**.
+2. Chọn nguồn dữ liệu:
+   - **Sinh theo seed:** chương trình tự sinh dữ liệu, dùng cho kích thước lớn.
+   - **File mẫu:** lấy từ `data/sample/`.
+   - **Tải file lên:** `.txt` theo định dạng chung, hoặc `.csv`.
+   - **Nhập tay:** có nút sinh số nguyên nhỏ ngẫu nhiên, để kết quả chính xác tuyệt đối.
+3. Đặt tham số trên từng thẻ chương trình. Bấm **Chạy**, hoặc chọn nhiều bản rồi bấm **Chạy các bản đã chọn**; bản tuần tự luôn chạy trước để làm mốc.
+4. Bảng kết quả hiển thị:
+   - thời gian từng pha và `check`;
+   - tỉ lệ tăng tốc so với bản tuần tự nhanh nhất trên cùng dữ liệu (chỉ để tham khảo);
+   - đánh dấu `≠` khi `check` lệch so với bản tuần tự đó.
+
+   Bấm **Chi tiết** để xem lệnh tương đương (chạy lại được trong terminal), stdout/stderr, kết quả và link tải `output.txt`.
+
+Thẻ chương trình hiện **"chưa build"** khi chưa có `build/<id>.exe`. Sau khi build, quay lại trình duyệt là thẻ tự cập nhật.
+
+## Hợp đồng tích hợp chương trình C++
+
+Giao diện không cần biết bên trong chương trình. Server chỉ gọi `build/<id>.exe` với các tham số dưới đây, rồi đọc file CSV và file kết quả mà chương trình ghi ra. **Muốn chương trình của mình hiện trên giao diện, chỉ cần theo đúng hợp đồng này và khai báo trong `ui/programs.json`; không phải viết mã giao diện.**
+
+### Tham số dòng lệnh
+
+| Tham số | Ý nghĩa | Ghi chú |
+|---|---|---|
+| `--n <số>` | Kích thước vector hoặc cấp ma trận | Dùng khi sinh dữ liệu theo seed |
+| `--seed <số>` | Seed sinh dữ liệu | Mặc định 42 |
+| `--input <file>` | Đọc dữ liệu từ file theo định dạng chung | Khi có tham số này, `n` lấy từ file và bỏ qua `--n`, `--seed` |
+| `--output <file>` | Ghi kết quả ra file theo định dạng chung | |
+| `--csv <file>` | Ghi thêm **đúng một dòng** kết quả đo | Ghi header nếu file chưa có |
+| `--b <số>` | Block size | Chỉ bản có chia block |
+| `--threads <số>` | Số thread OpenMP | Chỉ bản song song |
+| `--variant <tên>` | Biến thể, ví dụ `ijk`, `ikj`; `barrier`, `nobarrier` | Chỉ bản có biến thể |
+| `--schedule static\|dynamic` | Lập lịch OpenMP | Chỉ bản song song có dùng |
+| `--pin 0\|1` | Ghim thread vào lõi vật lý | Chỉ bản song song |
+| `--run <số>` | Số thứ tự lần chạy, ghi vào CSV | |
+| `--verify` | So kết quả với bản tham chiếu | Sai thì trả mã thoát khác 0 |
+
+**Quy ước tính thời gian các pha:**
+- Đọc `--input` và ghi `--output` tính vào `t_io`.
+- Cấp phát và sinh dữ liệu theo seed tính vào `t_init`.
+- Chỉ phần tính toán tính vào `t_compute`.
+
+### Định dạng file dữ liệu chung
+
+File văn bản; các số cách nhau bởi khoảng trắng, viết dạng thập phân thông thường (`3`, `-1.5`, `2e-3`). Định dạng này dùng chung cho giao diện, `data/sample/` và chương trình C++.
+
+**Tích vô hướng:** dòng đầu `dot <n>`, tiếp theo một dòng gồm n số của x, rồi một dòng gồm n số của y.
+
+```text
+dot 4
+1 2 3 4
+5 6 7 8
+```
+
+**Nhân ma trận** (ma trận vuông): dòng đầu `matmul <n>`, tiếp theo n dòng của A, rồi n dòng của B.
+
+```text
+matmul 2
+1 2
+3 4
+5 6
+7 8
+```
+
+**Kết quả** (`--output`):
+- Tích vô hướng: một dòng `dot_result <giá trị>`.
+- Nhân ma trận: dòng `matrix <n>`, tiếp theo n dòng của C.
+- Ghi số bằng `%.17g` để đọc lại không mất độ chính xác.
+
+```text
+dot_result 70
+```
+
+```text
+matrix 2
+19 22
+43 50
+```
+
+Khi tải `.csv` lên, giao diện tự chuyển về định dạng này:
+- tích vô hướng: 2 hàng (x, y) hoặc 2 cột;
+- nhân ma trận: hai file `A.csv` và `B.csv`.
+
+Dòng tiêu đề nếu có sẽ được bỏ qua. Vì vậy chương trình C++ chỉ cần đọc một định dạng.
+
+### Dòng CSV kết quả
+
+```text
+problem,variant,n,block,threads,sched,pinned,run,seed,t_init,t_compute,t_io,t_total,check
+```
+
+- Thời gian tính bằng giây.
+- `check` là giá trị kiểm tra kết quả: tích vô hướng thì là chính kết quả; nhân ma trận thì là tổng các phần tử của C.
+- Giao diện dùng `check` để phát hiện bản song song lệch so với bản tuần tự.
+
+### Mã thoát
+
+- `0` khi thành công.
+- Khác `0` khi lỗi: tham số sai, file sai định dạng, hoặc `--verify` phát hiện kết quả sai. Đồng thời in thông báo lỗi ra **stderr**; giao diện hiển thị nguyên văn thông báo này.
+
+### Khai báo trong `ui/programs.json`
+
+Mỗi chương trình là một mục trong mảng `programs`. Server đọc lại file mỗi lần, nên sửa xong chỉ cần tải lại trang.
+
+```json
+{
+  "id": "mm_par_2d",
+  "problem": "matmul",
+  "kind": "par",
+  "label": "Song song theo tile",
+  "owner": "Đức",
+  "params": ["b", "threads", "schedule", "pin"]
+}
+```
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `id` | Có | Tên file chạy, không có `.exe`: phải khớp tên file `.cpp` |
+| `problem` | Có | `dot` hoặc `matmul`: tab hiển thị |
+| `kind` | Có | `seq` hoặc `par`: cột Tuần tự hay Song song |
+| `label`, `owner` | Có | Tên hiển thị và người phụ trách |
+| `params` | Có | Tham số riêng mà chương trình nhận, chọn trong `b`, `threads`, `variant`, `schedule`, `pin`. `--n`, `--seed`, `--input`, `--output`, `--csv`, `--run`, `--verify` là tham số chung, không khai báo |
+| `variants` | Khi có `variant` | Danh sách giá trị cho `--variant` |
+| `threads` | Không | Giới hạn số thread được chọn, ví dụ Cannon chỉ nhận `[1, 4, 9]` |
+
+### Checklist để chương trình của bạn hiện trên giao diện
+
+1. File `.cpp` nằm trong `dot_product/` hoặc `matmul/`, build ra `build/<id>.exe` bằng `make`.
+2. Nhận đủ các tham số chung trong bảng trên, cùng các tham số riêng đã khai báo.
+3. Đọc được `--input` và ghi được `--output` bằng các hàm dùng chung trong `common/data_io` (xem mục dưới). Không tự viết bộ đọc riêng.
+4. Ghi đúng một dòng CSV vào `--csv`, theo đúng thứ tự cột.
+5. Trả mã thoát khác 0 và in lỗi ra stderr khi có sự cố.
+6. Thêm hoặc sửa mục của mình trong `ui/programs.json`.
+7. Mở giao diện, chạy với dữ liệu nhập tay nhỏ (nút "Sinh số nguyên nhỏ ngẫu nhiên"), so với bản tuần tự. `check` phải khớp và không có cảnh báo.
+
+Giao diện báo **"Xong, có cảnh báo"** khi chương trình không ghi CSV hoặc file kết quả, thường là do vẫn còn là stub. Bấm **Chi tiết** để xem lệnh mà server đã chạy, rồi chạy lại đúng lệnh đó trong terminal để gỡ lỗi.
+
+### Đặc tả phần đọc/ghi dùng chung (`common/data_io`, Vũ phụ trách)
+
+Các hàm dưới đây là **chữ ký gợi ý**; kiểu tham số điều chỉnh theo lớp `Matrix` của `common/matrix.hpp`.
+
+```cpp
+// common/data_io.hpp
+// Đọc file định dạng chung. Sai định dạng thì ném std::runtime_error kèm thông báo rõ ràng.
+void read_dot_input(const std::string& path, Matrix& x, Matrix& y);    // x, y: vector độ dài n
+void read_matmul_input(const std::string& path, Matrix& A, Matrix& B); // A, B: n x n
+// Ghi kết quả theo định dạng chung, số ghi bằng %.17g.
+void write_dot_result(const std::string& path, double value);
+void write_matrix_result(const std::string& path, const Matrix& C);
+```
+
+**Yêu cầu:**
+- Kiểm tra từ khóa đầu file (`dot` hoặc `matmul`) và n > 0.
+- Đọc đủ đúng số lượng số cần thiết; thiếu số hoặc thừa số đều là lỗi.
+- Bổ sung `--input`, `--output` vào bộ đọc tham số `common/cli.hpp`.
+- Trong `main`, bắt ngoại lệ, in thông báo ra stderr và trả mã thoát 2.
 
 ## Chạy thí nghiệm
 

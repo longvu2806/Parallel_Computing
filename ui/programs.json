@@ -1,0 +1,67 @@
+{
+  "problems": {
+    "dot": { "label": "Tích vô hướng", "default_n": 1000000 },
+    "matmul": { "label": "Nhân ma trận", "default_n": 256 }
+  },
+  "programs": [
+    {
+      "id": "dot_seq",
+      "problem": "dot",
+      "kind": "seq",
+      "label": "Tích vô hướng tuần tự",
+      "owner": "Cường",
+      "params": []
+    },
+    {
+      "id": "dot_omp",
+      "problem": "dot",
+      "kind": "par",
+      "label": "Tích vô hướng OpenMP",
+      "owner": "Cường",
+      "params": ["threads", "pin"]
+    },
+    {
+      "id": "mm_seq",
+      "problem": "matmul",
+      "kind": "seq",
+      "label": "Nhân chuẩn, 6 thứ tự vòng lặp",
+      "owner": "Vũ",
+      "params": ["variant"],
+      "variants": ["ijk", "ikj", "jik", "jki", "kij", "kji"]
+    },
+    {
+      "id": "mm_block_seq",
+      "problem": "matmul",
+      "kind": "seq",
+      "label": "Nhân theo block",
+      "owner": "Đức",
+      "params": ["b"]
+    },
+    {
+      "id": "mm_par_1d",
+      "problem": "matmul",
+      "kind": "par",
+      "label": "Song song 1D theo dải hàng",
+      "owner": "Vũ",
+      "params": ["b", "threads", "schedule", "pin"]
+    },
+    {
+      "id": "mm_par_2d",
+      "problem": "matmul",
+      "kind": "par",
+      "label": "Song song theo tile",
+      "owner": "Đức",
+      "params": ["b", "threads", "schedule", "pin"]
+    },
+    {
+      "id": "mm_cannon",
+      "problem": "matmul",
+      "kind": "par",
+      "label": "Cannon",
+      "owner": "Đức",
+      "params": ["b", "threads", "variant", "pin"],
+      "variants": ["barrier", "nobarrier"],
+      "threads": [1, 4, 9]
+    }
+  ]
+}

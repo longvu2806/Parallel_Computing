@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thử nghiệm song song</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="page-header">
+    <div class="wrap">
+      <h1>Giao diện thử nghiệm</h1>
+      <p class="sub">Chạy thử các bản tuần tự và song song của đồ án trên cùng một bộ dữ liệu.</p>
+      <p class="notice">Chỉ dùng để thử và gỡ lỗi. Số liệu đưa vào báo cáo phải đo bằng <code>scripts/run_experiments.sh</code>.</p>
+      <p class="server-info" id="server-info"></p>
+    </div>
+  </header>
+
+  <nav class="wrap tabs" id="tabs" role="tablist" aria-label="Bài toán"></nav>
+
+  <main class="wrap" id="main">
+    <section class="panel" aria-labelledby="data-title">
+      <h2 id="data-title">1. Dữ liệu</h2>
+      <div id="data-panel"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="prog-title">
+      <div class="panel-head">
+        <h2 id="prog-title">2. Phiên bản</h2>
+        <div class="actions">
+          <label class="check"><input type="checkbox" id="verify"> Kiểm tra đúng (<code>--verify</code>)</label>
+          <button type="button" class="primary" id="run-selected">Chạy các bản đã chọn</button>
+        </div>
+      </div>
+      <div class="columns" id="programs-panel"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="res-title">
+      <div class="panel-head">
+        <h2 id="res-title">3. Kết quả</h2>
+        <div class="actions">
+          <span class="muted" id="busy" aria-live="polite"></span>
+          <button type="button" id="clear-results">Xoá kết quả</button>
+        </div>
+      </div>
+      <div id="results-panel"></div>
+    </section>
+  </main>
+
+  <datalist id="threads-list"></datalist>
+  <script src="app.js"></script>
+</body>
+</html>
