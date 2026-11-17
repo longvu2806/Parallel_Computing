@@ -27,8 +27,10 @@ parallel_computing/
 ├── CONTRIBUTIONS.md        Đóng góp của từng thành viên (bắt buộc)
 │
 ├── common/                 Mã dùng chung cho cả hai bài
+│   ├── cli.hpp             Đọc tham số dòng lệnh theo hợp đồng
 │   ├── timer.hpp           Đo thời gian theo pha: khởi tạo, tính toán, I/O
 │   ├── matrix.hpp/.cpp     Cấp phát căn lề, sinh dữ liệu theo seed
+│   ├── data_io.hpp/.cpp    Đọc/ghi file dữ liệu định dạng chung
 │   └── csv_log.hpp/.cpp    Ghi kết quả đo ra CSV
 │
 ├── dot_product/            Bài chung
@@ -42,7 +44,7 @@ parallel_computing/
 │   ├── mm_par_2d.cpp       Song song, phân hoạch 2D theo tile
 │   └── mm_kernel.hpp       Vi nhân cho một block, có vectorization
 │
-├── tests/                  Kiểm thử: so bản song song với bản tuần tự
+├── tests/                  Kiểm thử (test_*.cpp), chạy bằng make test
 ├── scripts/
 │   ├── run_experiments.sh  Chạy ma trận cấu hình, mỗi cấu hình ít nhất 5 lần
 │   └── plot_results.py     Tính median, IQR, speedup, efficiency và vẽ biểu đồ
@@ -93,10 +95,10 @@ Kết quả cần là `x86_64-w64-mingw32` và `OpenMP OK`.
 ```bash
 cd /c/duong/dan/toi/parallel_computing
 make
-./build/mm_seq.exe
+make test
 ```
 
-Mỗi file `.cpp` trong `dot_product/`, `matmul/`, `tests/` thành một chương trình `build/<tên>.exe`. Đổi cờ biên dịch khi thí nghiệm:
+Mỗi file `.cpp` trong `dot_product/`, `matmul/`, `tests/` thành một chương trình `build/<tên>.exe`. `make test` build rồi chạy lần lượt mọi `build/test_*.exe`, dừng ở test đầu tiên thất bại. Chạy `make test` trước khi tạo pull request. Đổi cờ biên dịch khi thí nghiệm:
 
 ```bash
 make clean && make CXXFLAGS="-std=c++17 -O2 -fopenmp"
@@ -283,25 +285,67 @@ Mỗi chương trình là một mục trong mảng `programs`. Server đọc l�
 
 Giao diện báo **"Xong, có cảnh báo"** khi chương trình không ghi CSV hoặc file kết quả, thường là do vẫn còn là stub. Bấm **Chi tiết** để xem lệnh mà server đã chạy, rồi chạy lại đúng lệnh đó trong terminal để gỡ lỗi.
 
-### Đặc tả phần đọc/ghi dùng chung (`common/data_io`, Vũ phụ trách)
+### Mã dùng chung trong `common/` (Vũ phụ trách)
 
-Các hàm dưới đây là **chữ ký gợi ý**; kiểu tham số điều chỉnh theo lớp `Matrix` của `common/matrix.hpp`.
+Chi tiết từng hàm nằm trong chú thích của file `.hpp`.
+
+| File | Dùng để |
+|---|---|
+| `cli.hpp` | `parse_options_or_exit(argc, argv)` trả về `Options` chứa mọi tham số trong bảng trên; tham số sai thì in lỗi và thoát mã 2 |
+| `matrix.hpp` | Lớp `Matrix`: lưu theo hàng, căn lề 64 byte, `A(i, j)` hoặc `A.data()[i * n + j]`; vector độ dài n là `Matrix` 1 x n. Không sao chép ngầm được, cần bản sao thì gọi `clone()` |
+| `data_io.hpp` | `load_dot_input` / `load_matmul_input`: lấy dữ liệu đầu vào theo `--input` hoặc `--n`, `--seed`. `write_dot_result` / `write_matrix_result`: ghi `--output` |
+| `csv_log.hpp` | `make_csv_record` điền đủ 14 cột từ `Options` và timer; `append_csv_row` ghi một dòng vào `--csv` |
+| `timer.hpp` | `pc::PhaseTimer` đo ba pha init, compute, io (Cường) |
+
+**Quy ước chung, để kết quả các bản so sánh được với nhau:**
+- Lấy dữ liệu đầu vào **chỉ bằng** `load_dot_input` / `load_matmul_input`, không tự sinh hay tự đọc.
+  - Có `--input` thì đọc file, thời gian tính vào `t_io`. Có cả `--n` mà khác n trong file thì báo lỗi.
+  - Không có `--input` thì sinh theo `--n`, `--seed` (số thực đều trong [-1, 1)), thời gian tính vào `t_init`.
+  - Cùng `--n`, `--seed` thì mọi chương trình nhận đúng cùng dữ liệu, trên mọi máy.
+- Chỉ đo phần tính toán trong pha `Compute`.
+- Không truyền `--variant` thì gán `rec.variant` bằng tên biến thể mặc định trước khi ghi CSV.
+- Bắt mọi ngoại lệ trong `main`, in ra stderr, trả mã thoát 2.
+- Test đúng đắn dùng `Fill::SmallInt` (số nguyên trong [-4, 4]): kết quả tuần tự và song song phải khớp từng bit.
+
+**Khung `main` mẫu** (tích vô hướng; nhân ma trận tương tự với `load_matmul_input`, `write_matrix_result`):
 
 ```cpp
-// common/data_io.hpp
-// Đọc file định dạng chung. Sai định dạng thì ném std::runtime_error kèm thông báo rõ ràng.
-void read_dot_input(const std::string& path, Matrix& x, Matrix& y);    // x, y: vector độ dài n
-void read_matmul_input(const std::string& path, Matrix& A, Matrix& B); // A, B: n x n
-// Ghi kết quả theo định dạng chung, số ghi bằng %.17g.
-void write_dot_result(const std::string& path, double value);
-void write_matrix_result(const std::string& path, const Matrix& C);
-```
+#include "common/cli.hpp"
+#include "common/csv_log.hpp"
+#include "common/data_io.hpp"
+#include "common/timer.hpp"
+#include <cstdio>
+#include <exception>
 
-**Yêu cầu:**
-- Kiểm tra từ khóa đầu file (`dot` hoặc `matmul`) và n > 0.
-- Đọc đủ đúng số lượng số cần thiết; thiếu số hoặc thừa số đều là lỗi.
-- Bổ sung `--input`, `--output` vào bộ đọc tham số `common/cli.hpp`.
-- Trong `main`, bắt ngoại lệ, in thông báo ra stderr và trả mã thoát 2.
+int main(int argc, char** argv) {
+    pc::PhaseTimer timer;
+    const Options opt = parse_options_or_exit(argc, argv);
+    try {
+        Matrix x, y;
+        const long long n = load_dot_input(opt, x, y, timer);
+
+        double result = 0.0;
+        {
+            auto scope = timer.measure(pc::Phase::Compute);
+            result = /* tính tích vô hướng */;
+        }
+
+        if (!opt.output.empty()) {
+            auto scope = timer.measure(pc::Phase::IO);
+            write_dot_result(opt.output, result);
+        }
+        if (!opt.csv.empty()) {
+            CsvRecord rec = make_csv_record("dot", opt, n, timer, result);
+            if (rec.variant.empty()) rec.variant = "seq";
+            append_csv_row(opt.csv, rec);
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "Loi: %s\n", e.what());
+        return 2;
+    }
+}
+```
 
 ## Chạy thí nghiệm
 

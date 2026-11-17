@@ -15,9 +15,19 @@ APPS       := $(addsuffix $(EXE),$(addprefix $(BUILD_DIR)/,$(basename $(notdir $
 
 vpath %.cpp dot_product matmul tests
 
-.PHONY: all clean
+TESTS      := $(filter $(BUILD_DIR)/test_%,$(APPS))
+
+.PHONY: all clean test
 .SECONDARY: $(COMMON_OBJ)
 all: $(APPS)
+
+# Chạy lần lượt mọi build/test_*.exe, dừng ở test đầu tiên thất bại (mã thoát khác 0).
+test: $(TESTS)
+	@for t in $(TESTS); do \
+		echo "== $$t"; \
+		"$$t" || { echo "== THAT BAI: $$t"; exit 1; }; \
+	done; \
+	echo "== Tat ca test dat"
 
 $(BUILD_DIR)/%$(EXE): %.cpp $(COMMON_OBJ) $(HEADERS)
 	@mkdir -p $(@D)
