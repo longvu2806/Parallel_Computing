@@ -10,7 +10,8 @@
       "kind": "seq",
       "label": "Tích vô hướng tuần tự",
       "owner": "Cường",
-      "params": []
+      "params": ["variant"],
+      "variants": ["simd", "plain"]
     },
     {
       "id": "dot_omp",
@@ -18,7 +19,8 @@
       "kind": "par",
       "label": "Tích vô hướng OpenMP",
       "owner": "Cường",
-      "params": ["threads", "pin"]
+      "params": ["threads", "variant", "pin"],
+      "variants": ["simd", "plain"]
     },
     {
       "id": "mm_seq",

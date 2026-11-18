@@ -8,7 +8,7 @@ BUILD_DIR ?= build
 # g++ trên Windows luôn thêm đuôi .exe; khai báo để make không dịch lại mỗi lần
 EXE := $(if $(filter Windows_NT,$(OS)),.exe,)
 
-HEADERS    := $(wildcard common/*.hpp matmul/*.hpp)
+HEADERS    := $(wildcard common/*.hpp dot_product/*.hpp matmul/*.hpp)
 COMMON_OBJ := $(patsubst %.cpp,$(BUILD_DIR)/obj/%.o,$(wildcard common/*.cpp))
 APP_SRC    := $(wildcard dot_product/*.cpp matmul/*.cpp tests/*.cpp)
 APPS       := $(addsuffix $(EXE),$(addprefix $(BUILD_DIR)/,$(basename $(notdir $(APP_SRC)))))
