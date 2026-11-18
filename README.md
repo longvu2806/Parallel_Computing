@@ -295,6 +295,7 @@ Chi tiết từng hàm nằm trong chú thích của file `.hpp`.
 | `matrix.hpp` | Lớp `Matrix`: lưu theo hàng, căn lề 64 byte, `A(i, j)` hoặc `A.data()[i * n + j]`; vector độ dài n là `Matrix` 1 x n. Không sao chép ngầm được, cần bản sao thì gọi `clone()` |
 | `data_io.hpp` | `load_dot_input` / `load_matmul_input`: lấy dữ liệu đầu vào theo `--input` hoặc `--n`, `--seed`. `write_dot_result` / `write_matrix_result`: ghi `--output` |
 | `csv_log.hpp` | `make_csv_record` điền đủ 14 cột từ `Options` và timer; `append_csv_row` ghi một dòng vào `--csv` |
+| `verify.hpp` | Nhân ma trận: `mm::verify_product(A, B, C)` cho `--verify` (n ≤ 512 so từng phần tử với bản tham chiếu, lớn hơn dùng Freivalds O(n²)); `mm::describe` in kết quả; `mm::checksum(C)` cho cột `check` |
 | `timer.hpp` | `pc::PhaseTimer` đo ba pha init, compute, io (Cường) |
 
 **Quy ước chung, để kết quả các bản so sánh được với nhau:**
