@@ -350,7 +350,57 @@ int main(int argc, char** argv) {
 
 ## Chạy thí nghiệm
 
-Sẽ được bổ sung khi có `scripts/run_experiments.sh`.
+Số liệu báo cáo chỉ đo bằng `scripts/run_experiments.sh` (Cường phụ trách), chạy trong **MSYS2 UCRT64** ở thư mục gốc repo.
+
+```bash
+scripts/run_experiments.sh --check                                  # kiểm tra toolchain: g++, OpenMP đủ thread, make test
+scripts/run_experiments.sh --dry-run scripts/experiments/e1_dot.conf  # xem các lệnh sẽ chạy
+scripts/run_experiments.sh scripts/experiments/e1_dot.conf            # chạy thật
+```
+
+**Script làm gì:**
+1. `make` (và build riêng cho từng dòng `@build`).
+2. Chạy mỗi cấu hình một lần với `--verify`, không ghi CSV. Có cấu hình sai thì dừng, không đo.
+3. Mỗi cấu hình chạy 5 lần (`-r N` để đổi), thứ tự mọi lần chạy được xáo trộn. Mỗi lần ghi một dòng vào `results/raw/<tên thí nghiệm>.csv`.
+4. Bị ngắt giữa chừng thì chạy lại đúng lệnh cũ, script bỏ qua các lần đã xong (ghi trong `.done`). `--fresh` xóa kết quả cũ để chạy lại từ đầu.
+
+**File sinh ra trong `results/raw/`:**
+
+| File | Nội dung |
+|---|---|
+| `<tên>.csv` | Một dòng mỗi lần chạy, theo định dạng CSV chung |
+| `<tên>.<build>.csv` | Như trên, cho các dòng sau `@build <build>` (bản build với cờ khác) |
+| `<tên>.meta.txt` | Mỗi phiên chạy: thời điểm, commit, CPU, RAM, compiler, cờ, số lần, seed xáo trộn |
+| `<tên>.log` | Các lần chạy lỗi kèm thông báo (chỉ có khi có lỗi) |
+| `<tên>.done` | Các lần đã chạy xong, dùng để chạy tiếp; không đưa lên Git |
+
+**File cấu hình** (`scripts/experiments/*.conf`, tên file là tên thí nghiệm), mỗi dòng một cấu hình:
+
+```text
+# chú thích
+dot_omp --variant {plain,simd} --n {8192,100000000} --threads {1,2,4,6,12}
+@build novec -std=c++17 -O3 -fno-tree-vectorize -Wall -Wextra -fopenmp
+mm_block_seq --n 1024 --b {32,64}
+@build default
+```
+
+- `{a,b,c}` được khai triển thành mọi tổ hợp. Không ghi `--run`, `--csv`, vì script tự thêm.
+- `@build TÊN CỜ...`: các dòng sau dùng bản build vào `build/TÊN` với cờ đó. `@build default` quay lại `build/`.
+
+| Tùy chọn | Mặc định | Ý nghĩa |
+|---|---|---|
+| `-r N` | `5` | Số lần chạy mỗi cấu hình |
+| `-o DIR` | `results/raw` | Thư mục kết quả |
+| `-s SEED` | `2026` | Seed xáo trộn thứ tự chạy |
+| `-p GIÂY` | `0` | Nghỉ giữa hai lần chạy |
+| `-t GIÂY` | `0` (không giới hạn) | Giới hạn thời gian mỗi lần chạy |
+| `--no-verify` | | Bỏ lượt kiểm tra `--verify` |
+| `--fresh` | | Xóa kết quả cũ của thí nghiệm rồi chạy lại |
+| `--dry-run` | | Chỉ in lệnh, không chạy |
+
+`scripts/experiments/smoke.conf` chỉ để chạy thử quy trình trong vài giây. Kết quả của nó không dùng cho báo cáo và không đưa lên Git.
+
+**Trước khi chạy thí nghiệm chính:** cắm sạc, cố định chế độ nguồn, đóng ứng dụng nền, không đặt các biến `OMP_*` (`--check` sẽ cảnh báo nếu có).
 
 ## Môi trường thí nghiệm
 

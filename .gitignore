@@ -28,3 +28,7 @@ Thumbs.db
 
 # File tạm của Office
 ~$*
+
+# Kết quả chạy thử và trạng thái chạy tiếp của scripts/run_experiments.sh
+/results/raw/smoke.*
+/results/raw/*.done
