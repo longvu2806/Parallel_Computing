@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Chay thi nghiem theo file cau hinh: moi cau hinh chay N lan (mac dinh 5), thu tu cac lan chay
-# duoc xao tron, moi lan chay ghi mot dong CSV vao results/raw/<ten thi nghiem>.csv.
+# duoc xao tron, moi lan chay ghi mot dong CSV vao results/raw/<thi nghiem>/<chuong trinh>.csv.
 #
 # Chay trong MSYS2 UCRT64, o thu muc goc repo:
 #   scripts/run_experiments.sh --check                    kiem tra toolchain tren may do
@@ -10,11 +10,11 @@
 # Tuy chon:
 #   -r N         so lan chay moi cau hinh (mac dinh 5; de bai yeu cau toi thieu 5)
 #   -o DIR       thu muc ket qua (mac dinh results/raw)
-#   -s SEED      seed xao tron thu tu chay (mac dinh 2026), ghi vao file .meta.txt
+#   -s SEED      seed xao tron thu tu chay (mac dinh 2026), ghi vao meta.txt
 #   -p GIAY      nghi giua hai lan chay, giam nong may (mac dinh 0)
 #   -t GIAY      gioi han thoi gian moi lan chay, 0 = khong gioi han (mac dinh 0)
 #   --no-verify  bo qua luot kiem tra --verify truoc khi do
-#   --fresh      xoa ket qua cu cua thi nghiem (.csv, .done, .log, .meta.txt) roi chay lai tu dau
+#   --fresh      xoa thu muc ket qua cu cua thi nghiem roi chay lai tu dau
 #   --dry-run    chi in cac lenh se chay, khong chay
 #   --check      kiem tra toolchain (compiler, OpenMP, so thread, make test) roi thoat
 #   -h, --help   in huong dan nay
@@ -30,16 +30,24 @@
 #   --run, --csv (script tu them).
 # - {a,b,c} duoc khai trien thanh tich De-cac cua moi cap ngoac tren dong.
 # - "@build TEN CXXFLAGS..." build ban rieng vao build/TEN voi co bien dich do; cac dong sau
-#   dung ban nay va ghi vao <thi nghiem>.TEN.csv (CSV khong co cot co bien dich, nen tach file).
+#   dung ban nay va ghi vao <thi nghiem>/<chuong trinh>.TEN.csv (CSV khong co cot co bien dich).
+#
+# Ket qua cua thi nghiem <ten file .conf> nam trong results/raw/<thi nghiem>/:
+#   <chuong trinh>.csv     moi lan chay mot dong. Moi chuong trinh mot file vi CSV chung khong co
+#                          cot ten chuong trinh: dot_seq va dot_omp --threads 1 (hay mm_seq ikj va
+#                          mm_block_seq) co cung cac cot cau hinh, gop chung file se khong tach duoc.
+#   meta.txt               moi phien chay: thoi diem, commit, CPU, RAM, compiler, co, so lan, seed
+#   errors.log             cac lan chay loi (chi co khi co loi)
+#   runs.done              cac lan da chay xong, dung de chay tiep; khong dua len Git
 #   "@build default" quay lai build/ mac dinh.
 #
 # Quy trinh:
 #   1. make (va make cho tung @build).
 #   2. Luot kiem tra: chay moi cau hinh mot lan voi --verify, khong ghi CSV. Co cau hinh sai
 #      thi dung, khong do. Luot nay cung la luot khoi dong (nap chuong trinh, cache dia).
-#   3. Lap danh sach (cau hinh, lan chay), bo cac lan da xong (file .done), xao tron, chay.
-#      Moi lan chay xong thi ghi vao .done, nen bi ngat giua chung chi can chay lai dung lenh cu.
-#      Loi cua tung lan chay ghi vao .log, script chay tiep va tra ma 1 o cuoi.
+#   3. Lap danh sach (cau hinh, lan chay), bo cac lan da xong (runs.done), xao tron, chay.
+#      Moi lan chay xong thi ghi vao runs.done, nen bi ngat giua chung chi can chay lai dung lenh cu.
+#      Loi cua tung lan chay ghi vao errors.log, script chay tiep va tra ma 1 o cuoi.
 
 set -euo pipefail
 
@@ -221,7 +229,7 @@ expand_braces() {
     fi
 }
 
-# Moi cau hinh: "<thu muc build>|<file csv>|<chuong trinh va tham so>"
+# Moi cau hinh: "<thu muc build>|<thi nghiem>|<hau to build>|<chuong trinh va tham so>"
 ENTRIES=()
 declare -A BUILDS=()      # ten build -> co bien dich
 declare -A EXPERIMENTS=() # ten thi nghiem -> 1
@@ -233,7 +241,7 @@ parse_config() {
     exp="$(basename "$conf" .conf)"
     [[ "$exp" =~ ^[A-Za-z0-9_-]+$ ]] || die "ten file cau hinh chi duoc gom chu, so, _ va -: $conf"
     EXPERIMENTS[$exp]=1
-    local build_dir="build" csv="$OUT_DIR/$exp.csv"
+    local build_dir="build" suffix=""
     local lineno=0 raw line
     while IFS= read -r raw || [[ -n "$raw" ]]; do
         lineno=$((lineno + 1))
@@ -246,7 +254,7 @@ parse_config() {
             read -r _ name flags <<< "$line"
             [[ -n "$name" ]] || die "$conf:$lineno: @build can ten"
             if [[ "$name" == default ]]; then
-                build_dir="build"; csv="$OUT_DIR/$exp.csv"
+                build_dir="build"; suffix=""
                 continue
             fi
             [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "$conf:$lineno: ten build khong hop le: $name"
@@ -255,7 +263,7 @@ parse_config() {
                 die "$conf:$lineno: build $name da khai bao voi co khac"
             fi
             BUILDS[$name]="$flags"
-            build_dir="build/$name"; csv="$OUT_DIR/$exp.$name.csv"
+            build_dir="build/$name"; suffix=".$name"
             continue
         fi
         if [[ "$line" =~ (^|[[:space:]])--(run|csv)([[:space:]]|$) ]]; then
@@ -263,7 +271,7 @@ parse_config() {
         fi
         local e
         while IFS= read -r e; do
-            ENTRIES+=("$build_dir|$csv|$e")
+            ENTRIES+=("$build_dir|$exp|$suffix|$e")
         done < <(expand_braces "$line")
     done < "$conf"
 }
@@ -295,11 +303,17 @@ program_path() {
 
 if [[ $DRY_RUN -eq 0 ]]; then
     for entry in "${ENTRIES[@]}"; do
-        IFS='|' read -r dir _ cmd <<< "$entry"
+        IFS='|' read -r dir _ _ cmd <<< "$entry"
         prog="${cmd%% *}"
         program_path "$dir" "$prog" >/dev/null || die "khong co chuong trinh $dir/$prog (sai ten trong cau hinh?)"
     done
 fi
+
+# File CSV cua mot cau hinh: results/raw/<thi nghiem>/<chuong trinh><hau to build>.csv
+csv_path() {
+    local exp="$1" suffix="$2" cmd="$3"
+    echo "$OUT_DIR/$exp/${cmd%% *}$suffix.csv"
+}
 
 # Chay mot lenh, co gioi han thoi gian neu dat -t.
 run_limited() {
@@ -311,22 +325,20 @@ run_limited() {
 if [[ $DRY_RUN -eq 1 ]]; then
     echo "== ${#ENTRIES[@]} cau hinh x $REPS lan = $(( ${#ENTRIES[@]} * REPS )) lan chay"
     for entry in "${ENTRIES[@]}"; do
-        IFS='|' read -r dir csv cmd <<< "$entry"
+        IFS='|' read -r dir exp suffix cmd <<< "$entry"
         prog="${cmd%% *}"; args="${cmd#"$prog"}"
-        echo "$dir/$prog$args --run <0..$((REPS - 1))> --csv $csv"
+        echo "$dir/$prog$args --run <0..$((REPS - 1))> --csv $(csv_path "$exp" "$suffix" "$cmd")"
     done
     exit 0
 fi
 
-mkdir -p "$OUT_DIR"
-
-if [[ $FRESH -eq 1 ]]; then
-    for exp in "${!EXPERIMENTS[@]}"; do
-        echo "== --fresh: xoa ket qua cu cua $exp"
-        rm -f "$OUT_DIR/$exp".csv "$OUT_DIR/$exp".*.csv "$OUT_DIR/$exp".done "$OUT_DIR/$exp".log \
-              "$OUT_DIR/$exp".meta.txt
-    done
-fi
+for exp in "${!EXPERIMENTS[@]}"; do
+    if [[ $FRESH -eq 1 && -d "$OUT_DIR/$exp" ]]; then
+        echo "== --fresh: xoa ket qua cu trong $OUT_DIR/$exp/"
+        rm -rf "${OUT_DIR:?}/$exp"
+    fi
+    mkdir -p "$OUT_DIR/$exp"
+done
 
 # ------------------------------------------------------------------ luot kiem tra --verify
 
@@ -334,7 +346,7 @@ if [[ $VERIFY -eq 1 ]]; then
     echo "== Luot kiem tra: ${#ENTRIES[@]} cau hinh, moi cau hinh 1 lan voi --verify (khong ghi CSV)"
     vfail=0
     for entry in "${ENTRIES[@]}"; do
-        IFS='|' read -r dir _ cmd <<< "$entry"
+        IFS='|' read -r dir _ _ cmd <<< "$entry"
         read -r -a words <<< "$cmd"
         bin="$(program_path "$dir" "${words[0]}")"
         if ! out="$(run_limited "$bin" "${words[@]:1}" --verify 2>&1 >/dev/null)"; then
@@ -351,7 +363,7 @@ fi
 
 # ------------------------------------------------------------------ danh sach lan chay
 
-# Ghi thong tin phien chay vao <thi nghiem>.meta.txt (moi phien them mot khoi).
+# Ghi thong tin phien chay vao <thi nghiem>/meta.txt (moi phien them mot khoi).
 for exp in "${!EXPERIMENTS[@]}"; do
     {
         echo "== Phien chay $(date '+%Y-%m-%d %H:%M:%S')"
@@ -365,23 +377,21 @@ for exp in "${!EXPERIMENTS[@]}"; do
         for name in "${!BUILDS[@]}"; do echo "co build/$name: ${BUILDS[$name]}"; done
         echo "so lan     : $REPS, seed xao tron: $SHUFFLE_SEED, nghi: ${PAUSE}s, gioi han: ${TIME_LIMIT}s"
         echo "bien OMP   : $(env | grep -E '^(OMP_|GOMP_)' | tr '\n' ' ')"
-    } >> "$OUT_DIR/$exp.meta.txt"
+    } >> "$OUT_DIR/$exp/meta.txt"
 done
-
-exp_of_csv() { local b; b="$(basename "$1" .csv)"; echo "${b%%.*}"; }
 
 # Cac lan chay da xong tu phien truoc (khoa: "<build>|<lenh>|<lan>").
 declare -A DONE=()
 for exp in "${!EXPERIMENTS[@]}"; do
-    if [[ -f "$OUT_DIR/$exp.done" ]]; then
-        while IFS= read -r key; do DONE["$key"]=1; done < "$OUT_DIR/$exp.done"
+    if [[ -f "$OUT_DIR/$exp/runs.done" ]]; then
+        while IFS= read -r key; do DONE["$key"]=1; done < "$OUT_DIR/$exp/runs.done"
     fi
 done
 
 JOBS=()
 skipped=0
 for i in "${!ENTRIES[@]}"; do
-    IFS='|' read -r dir _ cmd <<< "${ENTRIES[$i]}"
+    IFS='|' read -r dir _ _ cmd <<< "${ENTRIES[$i]}"
     for ((r = 0; r < REPS; r++)); do
         if [[ -n "${DONE["$dir|$cmd|$r"]:-}" ]]; then skipped=$((skipped + 1)); continue; fi
         JOBS+=("$i|$r")
@@ -402,13 +412,13 @@ k=0
 for job in "${JOBS[@]}"; do
     k=$((k + 1))
     i="${job%%|*}"; r="${job##*|}"
-    IFS='|' read -r dir csv cmd <<< "${ENTRIES[$i]}"
+    IFS='|' read -r dir exp suffix cmd <<< "${ENTRIES[$i]}"
     read -r -a words <<< "$cmd"
     bin="$(program_path "$dir" "${words[0]}")"
-    exp="$(exp_of_csv "$csv")"
+    csv="$(csv_path "$exp" "$suffix" "$cmd")"
 
     if err="$(run_limited "$bin" "${words[@]:1}" --run "$r" --csv "$csv" 2>&1 >/dev/null)"; then
-        echo "$dir|$cmd|$r" >> "$OUT_DIR/$exp.done"
+        echo "$dir|$cmd|$r" >> "$OUT_DIR/$exp/runs.done"
         status="ok"
     else
         code=$?
@@ -417,7 +427,7 @@ for job in "${JOBS[@]}"; do
         {
             echo "$(date '+%Y-%m-%d %H:%M:%S') ma $code: $dir/$cmd --run $r --csv $csv"
             if [[ -n "$err" ]]; then echo "    $err"; fi
-        } >> "$OUT_DIR/$exp.log"
+        } >> "$OUT_DIR/$exp/errors.log"
     fi
 
     now=$(date +%s)
@@ -431,9 +441,9 @@ done
 
 echo "== Xong: $((total - failed))/$total lan chay thanh cong trong $(( $(date +%s) - start ))s"
 for exp in "${!EXPERIMENTS[@]}"; do
-    ls "$OUT_DIR/$exp".csv "$OUT_DIR/$exp".*.csv 2>/dev/null | sed 's/^/   ket qua: /' || true
+    ls "$OUT_DIR/$exp"/*.csv 2>/dev/null | sed 's/^/   ket qua: /' || true
 done
 if [[ $failed -gt 0 ]]; then
-    echo "== $failed lan chay loi, xem $OUT_DIR/<thi nghiem>.log; chay lai dung lenh nay de chay bu" >&2
+    echo "== $failed lan chay loi, xem $OUT_DIR/<thi nghiem>/errors.log; chay lai dung lenh nay de chay bu" >&2
     exit 1
 fi

@@ -30,5 +30,7 @@ Thumbs.db
 ~$*
 
 # Kết quả chạy thử và trạng thái chạy tiếp của scripts/run_experiments.sh
-/results/raw/smoke.*
-/results/raw/*.done
+/results/raw/smoke/
+/results/raw/*/runs.done
+# Bảng tóm tắt sinh lại được từ results/raw/ bằng scripts/plot_results.py
+/results/summary/

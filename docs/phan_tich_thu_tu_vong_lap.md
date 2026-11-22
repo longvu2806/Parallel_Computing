@@ -116,13 +116,27 @@ Thời gian tăng dần, tức thứ tự đứng trước nhanh hơn:
 
   Các thứ tự chậm (jki, kji) chỉ chạy ở hai cỡ đầu, như kế hoạch đã ghi.
 
-### Kết quả E2 (Cường điền sau khi đo)
+### Kết quả E2 (Cường đo)
+
+Median `t_compute` của 5 lần chạy, máy đo i7-9850H, ngày 22/11/2026, `scripts/experiments/e2_loop.conf`. Số liệu gốc: `results/raw/e2_loop/mm_seq.csv`; bảng đầy đủ (min, max, IQR, GFLOP/s): `python scripts/plot_results.py results/raw/e2_loop`.
 
 | n | ijk | ikj | jik | jki | kij | kji | Khớp dự đoán? |
 |---|---|---|---|---|---|---|---|
-| | | | | | | | |
-| | | | | | | | |
-| | | | | | | | |
+| 100 | 0,659 ms | **0,096 ms** | 0,671 ms | 0,318 ms | 0,115 ms | 0,529 ms | Khớp. Chỗ "<?" đã rõ: jki, kji nhanh hơn ijk, jik |
+| 600 | 199 ms | **26,4 ms** | 202 ms | 135 ms | 44,1 ms | 237 ms | Một phần: jki nhanh hơn ijk, jik |
+| 1500 | 7,01 s | **0,910 s** | 6,05 s | 21,3 s | 1,65 s | 41,2 s | Khớp hoàn toàn |
+
+Thứ tự nhanh → chậm:
+- n = 100: ikj < kij < jki < kji < ijk ≈ jik
+- n = 600: ikj < kij < jki < ijk ≈ jik < kji
+- n = 1500: ikj < kij < jik ≈ ijk < jki < kji
+
+Nhận xét:
+- **n = 100:** khi mọi dữ liệu nằm trong L2, chuỗi phụ thuộc phép cộng (mục 5) làm ijk, jik chậm nhất, chậm hơn cả FMA vô hướng độc lập của jki, kji.
+- **n = 600, jki nhanh hơn ijk:** hai cột A, C cần 2n = 1 200 line, vượt L1 (512) nhưng vừa L2 (4 096). Miss theo cột chỉ rơi xuống L2 (mục 3b), và các lần lặp của jki độc lập nên chạy chồng lấn được. ijk vẫn bị chặn bởi chuỗi phụ thuộc khoảng 4 chu kỳ mỗi lần lặp. kji chậm nhất vì còn ghi lại C n lần (mục 4).
+- **n = 1500:** đúng thứ tự dự đoán của mô hình số miss. Tỉ lệ kji / ikj là **45 lần**, vượt tỉ lệ số miss 8 lần, như đã dự đoán: truy cập theo cột còn mất tiền nạp và chịu miss TLB (mục 3d).
+- ikj (mặc định của `mm_seq`) nhanh nhất ở cả ba cỡ, đạt 20,9 / 16,4 / 7,4 GFLOP/s.
+- Độ phân tán: IQR dưới 8% median ở 16/18 cấu hình. Riêng ikj n = 100 (43,5%) và n = 600 (14,8%), vì mỗi lần chạy chỉ mất 0,1 ms và 26 ms nên nhiễu chiếm tỉ lệ lớn.
 
 Nếu có thời gian, có thể đo trực tiếp số miss L1 bằng Intel VTune trên máy đo (CPU Intel), để so với hệ số ở mục 2.
 
