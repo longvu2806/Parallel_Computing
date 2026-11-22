@@ -1,11 +1,12 @@
 // Nhân ma trận tuần tự chia block/tile.
 //
-//   build/mm_block_seq.exe --n 1024 [--b 64] [--seed 42] [--run 0]
+//   build/mm_block_seq.exe --n 1024 [--b 64] [--variant simd|novec] [--seed 42] [--run 0]
 //                          [--input file] [--output file] [--csv file] [--verify]
 //
 // Ba vòng ngoài duyệt block ii, kk, jj; mỗi bộ ba block gọi mm::block_multiply (matmul/mm_kernel.hpp),
 // bên trong block theo thứ tự ikj. Block ở biên nhỏ hơn khi n không chia hết cho b; b >= n là một block.
 // --b: block size (mặc định 64), dùng cho thí nghiệm E3 (khảo sát block size).
+// --variant: simd (mặc định, kernel tối ưu) hoặc novec (cùng kernel, cấm vector hóa), cho thí nghiệm E4.
 // Bản tuần tự chỉ chạy 1 thread; truyền --threads khác 1 là lỗi.
 // --verify: n <= 512 so từng phần tử với bản tham chiếu, n lớn hơn dùng Freivalds (common/verify).
 
@@ -26,11 +27,8 @@ int main(int argc, char** argv) {
     pc::PhaseTimer timer;
     const Options opt = parse_options_or_exit(argc, argv);
     try {
-        // Hiện chỉ có một biến thể kernel; bản tối ưu (D4) sẽ thêm biến thể cho thí nghiệm E4.
-        const std::string variant = opt.variant.empty() ? "ikj" : opt.variant;
-        if (variant != "ikj") {
-            throw std::invalid_argument("--variant cua mm_block_seq hien chi co ikj: " + variant);
-        }
+        const std::string variant = opt.variant.empty() ? "simd" : opt.variant;
+        const mm::Kernel kernel = mm::parse_kernel(variant);
         if (opt.threads != 1) {
             throw std::invalid_argument("mm_block_seq la ban tuan tu, khong nhan --threads khac 1");
         }
@@ -48,7 +46,7 @@ int main(int argc, char** argv) {
         // Gán 0 cho C nằm trong multiply_blocked, tính vào pha compute như mm_seq.
         {
             auto scope = timer.measure(pc::Phase::Compute);
-            mm::multiply_blocked(A.data(), B.data(), C.data(), static_cast<int>(n), opt.b);
+            mm::multiply_blocked(A.data(), B.data(), C.data(), static_cast<int>(n), opt.b, kernel);
         }
 
         // Kiểm tra nằm ngoài ba pha (chỉ tính vào t_total).
@@ -73,8 +71,8 @@ int main(int argc, char** argv) {
         rec.pinned = false;
         if (!opt.csv.empty()) append_csv_row(opt.csv, rec);
 
-        std::printf("mm_block_seq b=%d n=%lld check=%.17g t_init=%.6f t_compute=%.6f t_io=%.6f t_total=%.6f%s\n",
-                    opt.b, n, check, rec.t_init, rec.t_compute, rec.t_io, rec.t_total,
+        std::printf("mm_block_seq variant=%s b=%d n=%lld check=%.17g t_init=%.6f t_compute=%.6f t_io=%.6f t_total=%.6f%s\n",
+                    variant.c_str(), opt.b, n, check, rec.t_init, rec.t_compute, rec.t_io, rec.t_total,
                     opt.verify ? " verify=OK" : "");
         return 0;
     } catch (const std::exception& e) {

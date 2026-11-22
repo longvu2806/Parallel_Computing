@@ -1,5 +1,5 @@
-// Kiểm thử matmul/mm_kernel.hpp: block_multiply và multiply_blocked.
-// So với phép nhân ba vòng lặp đơn giản viết riêng trong file này.
+// Kiểm thử matmul/mm_kernel.hpp: block_multiply và multiply_blocked, cả hai biến thể kernel
+// (Kernel::Simd và Kernel::NoVec). So với phép nhân ba vòng lặp đơn giản viết riêng trong file này.
 // Dữ liệu số nguyên nhỏ (Fill::SmallInt) nên kết quả phải khớp từng bit, so bằng ==.
 // Trả mã thoát 0 nếu mọi kiểm tra đạt, 1 nếu có lỗi.
 
@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -50,17 +51,18 @@ void make_input(int n, unsigned seed, Matrix& A, Matrix& B, Fill kind = Fill::Sm
     generate_matmul_input(static_cast<std::size_t>(n), seed, A, B, kind);
 }
 
-}  // namespace
+// Các kiểm tra 1-6 chạy cho từng biến thể kernel; tên kiểm tra có tiền tố [simd] hoặc [novec].
+void test_kernel(mm::Kernel kern) {
+    const std::string tag = std::string("[") + mm::kernel_name(kern) + "] ";
 
-int main() {
     // 1. Một lời gọi block_multiply phủ cả ma trận chính là phép nhân đầy đủ.
     {
         const int n = 13;
         Matrix A, B;
         make_input(n, 1, A, B);
         Matrix C(n, n);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n);
-        check(same(C, naive(A, B)), "block_multiply tren ca ma tran 13x13 khop ban ijk");
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n, kern);
+        check(same(C, naive(A, B)), tag + "block_multiply tren ca ma tran 13x13 khop ban ijk");
     }
 
     // 2. block_multiply cộng dồn, không ghi đè: gọi hai lần được 2 * A * B.
@@ -69,12 +71,12 @@ int main() {
         Matrix A, B;
         make_input(n, 2, A, B);
         Matrix C(n, n);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n, kern);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 0, n, kern);
         const Matrix ref = naive(A, B);
         bool ok = true;
         for (std::size_t k = 0; k < C.size(); ++k) ok = ok && C[k] == 2.0 * ref[k];
-        check(ok, "goi hai lan thi cong don thanh 2 * A * B");
+        check(ok, tag + "goi hai lan thi cong don thanh 2 * A * B");
     }
 
     // 3. Chỉ ghi vào C[i0:i1, j0:j1], chỉ cộng các k trong [k0, k1).
@@ -85,7 +87,7 @@ int main() {
         make_input(n, 3, A, B);
         Matrix C(n, n);
         C.fill(-99.0);  // giá trị canh: phần ngoài vùng phải giữ nguyên
-        mm::block_multiply(A.data(), B.data(), C.data(), n, i0, i1, k0, k1, j0, j1);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, i0, i1, k0, k1, j0, j1, kern);
         bool inside = true, outside = true;
         for (int i = 0; i < n; ++i)
             for (int j = 0; j < n; ++j) {
@@ -96,8 +98,8 @@ int main() {
                 if (in) inside = inside && C(i, j) == expect;
                 else outside = outside && C(i, j) == -99.0;
             }
-        check(inside, "vung [3,8)x[5,11) cong dung tong theo k trong [2,7)");
-        check(outside, "ngoai vung khong bi ghi");
+        check(inside, tag + "vung [3,8)x[5,11) cong dung tong theo k trong [2,7)");
+        check(outside, tag + "ngoai vung khong bi ghi");
     }
 
     // 4. Khoảng rỗng không làm gì.
@@ -107,12 +109,12 @@ int main() {
         make_input(n, 4, A, B);
         Matrix C(n, n);
         C.fill(7.0);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 2, 2, 0, n, 0, n);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 3, 3, 0, n);
-        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 4, 4);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 2, 2, 0, n, 0, n, kern);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 3, 3, 0, n, kern);
+        mm::block_multiply(A.data(), B.data(), C.data(), n, 0, n, 0, n, 4, 4, kern);
         bool ok = true;
         for (std::size_t k = 0; k < C.size(); ++k) ok = ok && C[k] == 7.0;
-        check(ok, "khoang rong (i0 = i1, k0 = k1 hoac j0 = j1) khong doi C");
+        check(ok, tag + "khoang rong (i0 = i1, k0 = k1 hoac j0 = j1) khong doi C");
     }
 
     // 5. multiply_blocked khớp bản ijk với nhiều cặp (n, b), kể cả n không chia hết cho b,
@@ -126,9 +128,9 @@ int main() {
             make_input(n, 100 + n, A, B);
             Matrix C(n, n);
             C.fill(123.0);  // multiply_blocked phải tự gán 0
-            mm::multiply_blocked(A.data(), B.data(), C.data(), n, b);
+            mm::multiply_blocked(A.data(), B.data(), C.data(), n, b, kern);
             check(same(C, naive(A, B)),
-                  "multiply_blocked n=" + std::to_string(n) + " b=" + std::to_string(b) + " khop ban ijk");
+                  tag + "multiply_blocked n=" + std::to_string(n) + " b=" + std::to_string(b) + " khop ban ijk");
         }
     }
 
@@ -139,13 +141,59 @@ int main() {
         Matrix A, B;
         make_input(n, 7, A, B, Fill::Uniform);
         Matrix C(n, n);
-        mm::multiply_blocked(A.data(), B.data(), C.data(), n, b);
+        mm::multiply_blocked(A.data(), B.data(), C.data(), n, b, kern);
         const double u = 1.1102230246251565e-16;  // 2^-53
         const double bound = 2.0 * n * u * n;      // gap doi gamma_n * n
         const double d = max_abs_diff(C, naive(A, B));
         char buf[96];
         std::snprintf(buf, sizeof buf, "so thuc n=200 b=48: lech lon nhat %.3g <= %.3g", d, bound);
-        check(d <= bound, buf);
+        check(d <= bound, tag + buf);
+    }
+
+}
+
+}  // namespace
+
+int main() {
+    test_kernel(mm::Kernel::Simd);
+    test_kernel(mm::Kernel::NoVec);
+
+    // 7. Hai biến thể giống nhau từng bit kể cả với số thực: vector hóa vòng j không đổi
+    //    thứ tự cộng (mỗi C[i][j] vẫn cộng các tích theo k tăng dần). Nhiều cặp (n, b) để
+    //    gặp đủ trường hợp: số bước k chia hết hoặc không chia hết cho 4, độ dài j lẻ.
+    {
+        const int cases[][2] = {{97, 32}, {100, 48}, {130, 64}, {200, 13}};
+        for (const auto& c : cases) {
+            const int n = c[0], b = c[1];
+            Matrix A, B;
+            make_input(n, 300 + n, A, B, Fill::Uniform);
+            Matrix Cs(n, n), Cn(n, n);
+            mm::multiply_blocked(A.data(), B.data(), Cs.data(), n, b, mm::Kernel::Simd);
+            mm::multiply_blocked(A.data(), B.data(), Cn.data(), n, b, mm::Kernel::NoVec);
+            check(same(Cs, Cn), "so thuc n=" + std::to_string(n) + " b=" + std::to_string(b) +
+                                    ": simd va novec giong nhau tung bit");
+        }
+    }
+
+    // 8. Mặc định là Kernel::Simd; tên biến thể đổi qua lại đúng, tên sai bị từ chối.
+    {
+        const int n = 21;
+        Matrix A, B;
+        make_input(n, 8, A, B, Fill::Uniform);
+        Matrix C1(n, n), C2(n, n);
+        mm::multiply_blocked(A.data(), B.data(), C1.data(), n, 8);
+        mm::multiply_blocked(A.data(), B.data(), C2.data(), n, 8, mm::Kernel::Simd);
+        check(same(C1, C2), "multiply_blocked mac dinh dung Kernel::Simd");
+        check(mm::parse_kernel("simd") == mm::Kernel::Simd && mm::parse_kernel("novec") == mm::Kernel::NoVec,
+              "parse_kernel nhan simd va novec");
+        check(std::string(mm::kernel_name(mm::parse_kernel("novec"))) == "novec", "kernel_name nguoc voi parse_kernel");
+        bool threw = false;
+        try {
+            mm::parse_kernel("ikj");
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        check(threw, "parse_kernel tu choi ten sai (ikj)");
     }
 
     if (g_failures == 0) {
