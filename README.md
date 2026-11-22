@@ -381,18 +381,31 @@ scripts/run_experiments.sh scripts/experiments/e1_dot.conf            # chạy t
 **Script làm gì:**
 1. `make` (và build riêng cho từng dòng `@build`).
 2. Chạy mỗi cấu hình một lần với `--verify`, không ghi CSV. Có cấu hình sai thì dừng, không đo.
-3. Mỗi cấu hình chạy 5 lần (`-r N` để đổi), thứ tự mọi lần chạy được xáo trộn. Mỗi lần ghi một dòng vào `results/raw/<tên thí nghiệm>.csv`.
-4. Bị ngắt giữa chừng thì chạy lại đúng lệnh cũ, script bỏ qua các lần đã xong (ghi trong `.done`). `--fresh` xóa kết quả cũ để chạy lại từ đầu.
+3. Mỗi cấu hình chạy 5 lần (`-r N` để đổi), thứ tự mọi lần chạy được xáo trộn. Mỗi lần ghi một dòng vào `results/raw/<tên thí nghiệm>/<chương trình>.csv`.
+4. Bị ngắt giữa chừng thì chạy lại đúng lệnh cũ, script bỏ qua các lần đã xong (ghi trong `runs.done`). `--fresh` xóa kết quả cũ để chạy lại từ đầu.
 
-**File sinh ra trong `results/raw/`:**
+**File sinh ra trong `results/raw/<tên thí nghiệm>/`:**
 
 | File | Nội dung |
 |---|---|
-| `<tên>.csv` | Một dòng mỗi lần chạy, theo định dạng CSV chung |
-| `<tên>.<build>.csv` | Như trên, cho các dòng sau `@build <build>` (bản build với cờ khác) |
-| `<tên>.meta.txt` | Mỗi phiên chạy: thời điểm, commit, CPU, RAM, compiler, cờ, số lần, seed xáo trộn |
-| `<tên>.log` | Các lần chạy lỗi kèm thông báo (chỉ có khi có lỗi) |
-| `<tên>.done` | Các lần đã chạy xong, dùng để chạy tiếp; không đưa lên Git |
+| `<chương trình>.csv` | Một dòng mỗi lần chạy, theo định dạng CSV chung |
+| `<chương trình>.<build>.csv` | Như trên, cho các dòng sau `@build <build>` (bản build với cờ khác) |
+| `meta.txt` | Mỗi phiên chạy: thời điểm, commit, CPU, RAM, compiler, cờ, số lần, seed xáo trộn |
+| `errors.log` | Các lần chạy lỗi kèm thông báo (chỉ có khi có lỗi) |
+| `runs.done` | Các lần đã chạy xong, dùng để chạy tiếp; không đưa lên Git |
+
+Mỗi chương trình một file vì CSV chung không có cột tên chương trình: `dot_seq` và `dot_omp --threads 1` (hay `mm_seq --variant ikj` và `mm_block_seq`) có cùng các cột cấu hình, gộp chung file sẽ không tách được.
+
+**Thống kê** (PowerShell, cần numpy, pandas):
+
+```powershell
+python scripts/plot_results.py results/raw/e2_loop   # một thí nghiệm; bỏ trống = mọi thí nghiệm trừ smoke
+```
+
+In bảng median, min, max, IQR, GFLOP/s của `t_compute` cho từng cấu hình và ghi `results/summary/<tên>.csv` (sinh lại được, không đưa lên Git). Cột `check`:
+- `ok`: mọi lần chạy cho cùng giá trị;
+- `~`: lệch vài chữ số cuối, bình thường với bản song song số thực;
+- `LECH`: lệch quá mức làm tròn, cần xem lại.
 
 **File cấu hình** (`scripts/experiments/*.conf`, tên file là tên thí nghiệm), mỗi dòng một cấu hình:
 
@@ -418,7 +431,7 @@ mm_block_seq --n 1024 --b {32,64}
 | `--fresh` | | Xóa kết quả cũ của thí nghiệm rồi chạy lại |
 | `--dry-run` | | Chỉ in lệnh, không chạy |
 
-`scripts/experiments/smoke.conf` chỉ để chạy thử quy trình trong vài giây. Kết quả của nó không dùng cho báo cáo và không đưa lên Git.
+`scripts/experiments/smoke.conf` chỉ để chạy thử quy trình trong vài chục giây. Kết quả của nó (`results/raw/smoke/`) không dùng cho báo cáo và không đưa lên Git.
 
 **Trước khi chạy thí nghiệm chính:** cắm sạc, cố định chế độ nguồn, đóng ứng dụng nền, không đặt các biến `OMP_*` (`--check` sẽ cảnh báo nếu có).
 
