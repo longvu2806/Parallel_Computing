@@ -45,11 +45,14 @@ parallel_computing/
 │   └── mm_kernel.hpp       Vi nhân cho một block, có vectorization
 │
 ├── tests/                  Kiểm thử (test_*.cpp), chạy bằng make test
+├── docs/                   Ghi chú phân tích (vd. phan_tich_thu_tu_vong_lap.md cho E2)
 ├── scripts/
 │   ├── run_experiments.sh  Chạy ma trận cấu hình, mỗi cấu hình ít nhất 5 lần
-│   └── plot_results.py     Tính median, IQR, speedup, efficiency và vẽ biểu đồ
+│   ├── plot_results.py     Tính median, IQR, speedup, efficiency và vẽ biểu đồ
+│   └── make_samples.py     Sinh dữ liệu mẫu có đáp án vào data/sample/
 ├── data/
 │   └── sample/             Dữ liệu mẫu nhỏ; dữ liệu lớn được sinh theo seed
+│       └── expected/       Đáp án của từng mẫu
 ├── results/
 │   ├── raw/                CSV/JSON thô từ thí nghiệm
 │   └── figures/            Biểu đồ sinh từ raw/
@@ -232,6 +235,23 @@ Khi tải `.csv` lên, giao diện tự chuyển về định dạng này:
 - nhân ma trận: hai file `A.csv` và `B.csv`.
 
 Dòng tiêu đề nếu có sẽ được bỏ qua. Vì vậy chương trình C++ chỉ cần đọc một định dạng.
+
+### Dữ liệu mẫu có đáp án (`data/sample/`)
+
+Mỗi mẫu `data/sample/<tên>.txt` có đáp án `data/sample/expected/<tên>.txt` theo định dạng kết quả ở trên. Mẫu chỉ chứa số nguyên nhỏ, nên mọi bản (tuần tự, block, song song, mọi thứ tự cộng) phải ra **đúng** đáp án, và file `--output` trùng từng byte với file đáp án.
+
+| Mẫu | Mục đích |
+|---|---|
+| `dot_4`, `matmul_2` | Ví dụ ở trên: 70 và `19 22 / 43 50` |
+| `dot_1`, `matmul_1` | Biên n = 1 |
+| `dot_1000` | n không chia hết cho độ rộng vector |
+| `matmul_identity_6` | B là ma trận đơn vị, đáp án C = A |
+| `matmul_17` | n lẻ: block ở biên bị cắt với mọi b |
+| `matmul_64` | Cỡ vừa, n chia hết cho các block thường dùng |
+
+- `tests/test_samples.cpp` (chạy trong `make test`) tính mọi mẫu bằng các kernel của cả nhóm và so với đáp án. Thêm kernel mới thì thêm vào test này.
+- Thử nhanh một chương trình: `./build/mm_seq.exe --input data/sample/matmul_17.txt --output out.txt`, rồi so `out.txt` với `data/sample/expected/matmul_17.txt`.
+- Sinh lại hoặc thêm mẫu: sửa và chạy `python scripts/make_samples.py` (trong PowerShell). Đáp án tính bằng số nguyên Python, độc lập với mã C++.
 
 ### Dòng CSV kết quả
 
