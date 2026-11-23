@@ -37,7 +37,8 @@
       "kind": "seq",
       "label": "Nhân theo block",
       "owner": "Đức",
-      "params": ["b"]
+      "params": ["b", "variant"],
+      "variants": ["simd", "novec"]
     },
     {
       "id": "mm_par_1d",
@@ -53,7 +54,8 @@
       "kind": "par",
       "label": "Song song theo tile",
       "owner": "Đức",
-      "params": ["b", "threads", "schedule", "pin"]
+      "params": ["b", "threads", "schedule", "pin", "variant"],
+      "variants": ["simd", "novec"]
     },
     {
       "id": "mm_cannon",
