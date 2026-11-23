@@ -127,6 +127,7 @@ def print_summary(s: pd.DataFrame) -> None:
             "n": g["n"],
             "b": g["block"],
             "thr": g["threads"],
+            "sched": g["sched"],
             "pin": g["pinned"],
             "runs": g["runs"],
             "median(s)": g["t_compute_median"].map(lambda v: f"{v:.6g}"),
