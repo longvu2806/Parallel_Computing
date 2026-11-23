@@ -1,0 +1,10 @@
+== Phien chay 2026-11-23 22:14:12
+cau hinh   : scripts/experiments/tile_shape.conf
+commit     : 01925ff
+cpu        : Intel(R) Core(TM) i7-9850H CPU @ 2.60GHz, 12 CPU logic
+ram        : 15.7 GB
+he dieu hanh: MINGW64_NT-10.0-26200 3.6.5-0eeda3e1.x86_64 x86_64
+compiler   : g++.exe (Rev8, Built by MSYS2 project) 15.2.0
+co build/  : -std=c++17 -O3 -march=native -Wall -Wextra -fopenmp
+so lan     : 5, seed xao tron: 2026, nghi: 0s, gioi han: 0s
+bien OMP   : 
