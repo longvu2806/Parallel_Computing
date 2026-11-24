@@ -8,6 +8,8 @@
 #include "common/verify.hpp"
 #include "dot_product/dot_kernel.hpp"
 #include "matmul/mm_kernel.hpp"
+#include "matmul/mm_par_1d.hpp"
+#include "matmul/mm_par_2d.hpp"
 #include "matmul/mm_seq.hpp"
 
 #include <omp.h>
@@ -128,8 +130,22 @@ void check_matmul(const std::string& name, const fs::path& input, const Expected
         mm::multiply_blocked(A.data(), B.data(), C.data(), static_cast<int>(n), b);
         if (!identical(C, e.C)) failed += " block/b=" + std::to_string(b);
     }
+    // Bản song song: 1D theo dải hàng (Vũ) và tile 2D (Đức), b = 8, 1/4/12 thread, cả hai lịch.
+    for (int threads : {1, 4, 12}) {
+        omp_set_dynamic(0);
+        omp_set_num_threads(threads);
+        for (mm::Schedule s : {mm::Schedule::Static, mm::Schedule::Dynamic}) {
+            const std::string tag = std::to_string(threads) + "/" + mm::schedule_name(s);
+            C.fill(-1.0);
+            mm::multiply_rows(A.data(), B.data(), C.data(), static_cast<int>(n), 8, s);
+            if (!identical(C, e.C)) failed += " 1d/" + tag;
+            C.fill(-1.0);
+            mm::multiply_tiles(A.data(), B.data(), C.data(), static_cast<int>(n), 8, s);
+            if (!identical(C, e.C)) failed += " tile/" + tag;
+        }
+    }
     check(failed.empty(), name + " (n = " + std::to_string(n) +
-                              "): tham chieu, 6 thu tu, block b = 1/4/8/64 khop dap an" +
+                              "): tham chieu, 6 thu tu, block b = 1/4/8/64, 1D va tile 1/4/12 thread khop dap an" +
                               (failed.empty() ? "" : ", sai:" + failed));
 }
 

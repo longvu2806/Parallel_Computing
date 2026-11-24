@@ -46,7 +46,8 @@
       "kind": "par",
       "label": "Song song 1D theo dải hàng",
       "owner": "Vũ",
-      "params": ["b", "threads", "schedule", "pin"]
+      "params": ["b", "threads", "schedule", "pin", "variant"],
+      "variants": ["simd", "novec"]
     },
     {
       "id": "mm_par_2d",
