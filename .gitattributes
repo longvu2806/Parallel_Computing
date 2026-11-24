@@ -2,3 +2,7 @@
 *.sh     text eol=lf
 *.py     text eol=lf
 Makefile text eol=lf
+
+# Dữ liệu mẫu và đáp án giữ LF: file --output của chương trình C++ (ghi "\n") phải trùng từng byte
+# với data/sample/expected/ trên mọi máy, kể cả Windows có core.autocrlf=true.
+data/sample/** text eol=lf
