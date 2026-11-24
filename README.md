@@ -396,16 +396,26 @@ scripts/run_experiments.sh scripts/experiments/e1_dot.conf            # chạy t
 
 Mỗi chương trình một file vì CSV chung không có cột tên chương trình: `dot_seq` và `dot_omp --threads 1` (hay `mm_seq --variant ikj` và `mm_block_seq`) có cùng các cột cấu hình, gộp chung file sẽ không tách được.
 
-**Thống kê** (PowerShell, cần numpy, pandas):
+**Thống kê và biểu đồ** (PowerShell, cần numpy, pandas, matplotlib; shell MSYS2 không có Python):
 
 ```powershell
 python scripts/plot_results.py results/raw/e2_loop   # một thí nghiệm; bỏ trống = mọi thí nghiệm trừ smoke
+python scripts/plot_results.py --no-plots ...        # chỉ in bảng
 ```
 
-In bảng median, min, max, IQR, GFLOP/s của `t_compute` cho từng cấu hình và ghi `results/summary/<tên>.csv` (sinh lại được, không đưa lên Git). Cột `check`:
-- `ok`: mọi lần chạy cho cùng giá trị;
-- `~`: lệch vài chữ số cuối, bình thường với bản song song số thực;
-- `LECH`: lệch quá mức làm tròn, cần xem lại.
+| Kết quả | Nội dung |
+|---|---|
+| `results/summary/<tên>.csv` | Mỗi cấu hình: median, min, max, Q1, Q3, IQR, độ lệch chuẩn của `t_compute`, `t_total`; GFLOP/s; `check` |
+| `results/summary/<tên>_speedup.csv` | Mỗi cấu hình song song: T1, speedup, efficiency, Karp–Flatt, speedup so với chính nó ở 1 thread |
+| `results/figures/<tên>/*.png` | Biểu đồ, chọn tự động: `variants_*` (bản tuần tự nhiều biến thể, ví dụ E2), `block_sweep_*` (quét block size, ví dụ E3), `scaling_n<n>` (speedup, efficiency, Karp–Flatt theo số thread) |
+
+`results/summary/` sinh lại được nên không đưa lên Git; `results/figures/` đưa lên Git để dùng cho báo cáo.
+
+- **Mốc T1** cho speedup: bản tuần tự (`*_seq`) nhanh nhất **trong cùng thí nghiệm**, cùng n, cùng mức vector hoá (`novec`, `plain` so với bản tuần tự vô hướng; còn lại so với bản `simd`). Không lấy T1 từ thí nghiệm khác, vì trạng thái máy thay đổi giữa các phiên đo. Thí nghiệm có bản song song phải có dòng chạy bản tuần tự trong cùng file `.conf`.
+- Cột `check`:
+  - `ok`: mọi lần chạy cho cùng giá trị;
+  - `~`: lệch vài chữ số cuối, bình thường với bản song song số thực;
+  - `LECH`: lệch quá mức làm tròn, cần xem lại.
 
 **File cấu hình** (`scripts/experiments/*.conf`, tên file là tên thí nghiệm), mỗi dòng một cấu hình:
 

@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Doc ket qua do trong results/raw/, tinh thong ke cho tung cau hinh.
+"""Doc ket qua do trong results/raw/, tinh thong ke, speedup va ve bieu do.
 
-Chay trong PowerShell (can numpy, pandas), o thu muc goc repo:
+Chay trong PowerShell (can numpy, pandas, matplotlib), o thu muc goc repo:
     python scripts/plot_results.py                      # moi thi nghiem trong results/raw/ (tru smoke)
     python scripts/plot_results.py results/raw/e2_loop  # chi mot thi nghiem (thu muc hoac file .csv)
+    python scripts/plot_results.py --no-plots ...       # chi in bang, khong ve
 
 Dau vao: results/raw/<thi nghiem>/<chuong trinh>[.<build>].csv do scripts/run_experiments.sh ghi.
 Ten chuong trinh lay tu ten file, vi CSV chung khong co cot nay.
 
 Ket qua:
-    - in bang tom tat ra man hinh;
-    - ghi results/summary/<thi nghiem>.csv, moi dong mot cau hinh.
+    - in bang tom tat va bang speedup ra man hinh;
+    - results/summary/<thi nghiem>.csv          moi dong mot cau hinh (thong ke ben duoi);
+    - results/summary/<thi nghiem>_speedup.csv  speedup, efficiency, Karp-Flatt cua ban song song
+                                                (cach chon moc T1: xem scripts/figures.py);
+    - results/figures/<thi nghiem>/*.png        bieu do, chon tu dong theo noi dung thi nghiem:
+        variants_<chuong trinh>.png   ban tuan tu nhieu bien the (vi du E2: 6 thu tu vong lap)
+        block_sweep_<...>.png         ban tuan tu quet block size (vi du E3)
+        scaling_n<n>.png              ban song song nhieu so thread: speedup, efficiency, Karp-Flatt
 
 Thong ke (tai lieu ly thuyet, muc 2.6), tinh tren cac lan chay cua cung mot cau hinh:
     runs                  so lan chay (de bai yeu cau >= 5; it hon thi canh bao)
@@ -35,9 +42,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from figures import compute_speedup, make_figures
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO_ROOT / "results" / "raw"
 SUMMARY_DIR = REPO_ROOT / "results" / "summary"
+FIGURES_DIR = REPO_ROOT / "results" / "figures"
 
 COLUMNS = ["problem", "variant", "n", "block", "threads", "sched", "pinned", "run", "seed",
            "t_init", "t_compute", "t_io", "t_total", "check"]
@@ -141,11 +151,39 @@ def print_summary(s: pd.DataFrame) -> None:
         print(view.to_string(index=False))
 
 
+def show_path(p: Path) -> str:
+    return str(p.relative_to(REPO_ROOT)) if p.is_relative_to(REPO_ROOT) else str(p)
+
+
+def print_speedup(sp: pd.DataFrame) -> None:
+    for experiment, g in sp.groupby("experiment", sort=True):
+        print(f"\n== {experiment}: speedup so voi ban tuan tu tot nhat cung thi nghiem")
+        view = pd.DataFrame({
+            "program": g["program"],
+            "variant": g["variant"],
+            "n": g["n"],
+            "b": g["block"],
+            "thr": g["threads"],
+            "sched": g["sched"],
+            "pin": g["pinned"],
+            "Tp(s)": g["t_compute_median"].map(lambda v: f"{v:.4g}"),
+            "T1(s)": g["t1"].map(lambda v: f"{v:.4g}"),
+            "S": g["speedup"].map(lambda v: f"{v:.2f}"),
+            "E": g["efficiency"].map(lambda v: f"{v:.2f}"),
+            "Karp-Flatt": g["karp_flatt"].map(lambda v: "" if pd.isna(v) else f"{v:.3f}"),
+            "S_self": g["speedup_self"].map(lambda v: "" if pd.isna(v) else f"{v:.2f}"),
+        })
+        print(view.to_string(index=False))
+        print("T1: " + "; ".join(sorted(g["baseline"].dropna().unique())))
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Thong ke ket qua do (median, IQR, ...) cho tung cau hinh.")
     ap.add_argument("target", nargs="*", type=Path,
                     help="thu muc thi nghiem (results/raw/<ten>) hoac file .csv; bo trong = moi thi nghiem tru smoke")
     ap.add_argument("--out", type=Path, default=SUMMARY_DIR, help="thu muc ghi bang tom tat")
+    ap.add_argument("--figures", type=Path, default=FIGURES_DIR, help="thu muc ghi bieu do")
+    ap.add_argument("--no-plots", action="store_true", help="chi tinh thong ke, khong ve bieu do")
     args = ap.parse_args(argv)
 
     paths = find_csvs(args.target)
@@ -162,7 +200,23 @@ def main(argv: list[str]) -> int:
         name = experiment if build == "default" else f"{experiment}.{build}"
         out = args.out / f"{name}.csv"
         g.to_csv(out, index=False, float_format="%.9g")
-        print(f"\nDa ghi {out.relative_to(REPO_ROOT) if out.is_relative_to(REPO_ROOT) else out}")
+        print(f"\nDa ghi {show_path(out)}")
+
+    sp = compute_speedup(s)
+    if not sp.empty:
+        print_speedup(sp)
+        for experiment, g in sp.groupby("experiment", sort=True):
+            out = args.out / f"{experiment}_speedup.csv"
+            g.to_csv(out, index=False, float_format="%.9g")
+            print(f"Da ghi {show_path(out)}")
+        missing = sp[sp["t1"].isna()]
+        if not missing.empty:
+            print(f"CANH BAO: {len(missing)} cau hinh song song khong co ban tuan tu cung thi nghiem, cung n, "
+                  f"cung muc vectorization de lam moc T1", file=sys.stderr)
+
+    if not args.no_plots:
+        for p in make_figures(s, sp, args.figures):
+            print(f"Da ve {show_path(p)}")
 
     few = s[s["runs"] < MIN_RUNS]
     bad = s[s["check_status"] == "LECH"]
