@@ -4,14 +4,14 @@
 //                       [--variant simd|novec] [--seed 42] [--run 0]
 //                       [--input file] [--output file] [--csv file] [--verify]
 //
-// Mỗi tile của C (cao b hàng, rộng 4b cột) là một đơn vị việc; collapse(2) gộp lưới tile thành
-// một danh sách, chia cho các thread theo --schedule (matmul/mm_par_2d.hpp, có giải thích vì sao
-// tile rộng 4b). Bên trong tile gọi kernel block mm::block_multiply như mm_block_seq, nên kết quả
-// giống từng bit mm_block_seq cùng b.
+// Mỗi tile b x b của C là một đơn vị việc; collapse(2) gộp lưới tile thành một danh sách, chia cho
+// các thread theo --schedule (matmul/mm_par_2d.hpp, có giải thích vì sao chọn tile vuông).
+// Bên trong tile gọi kernel block mm::block_multiply như mm_block_seq, nên kết quả giống từng bit
+// mm_block_seq cùng b.
 // --b: block size của kernel (mặc định 64; E3 trên máy đo cho thấy b = 48 tốt nhất).
 // --schedule: static (mặc định) hoặc dynamic (chunk 1), cho thí nghiệm E6.
 // --variant: simd (mặc định) hoặc novec (cấm vector hóa), cho thí nghiệm E4 ở nhiều thread.
-//            Thêm "-w<số>" để đổi bề rộng tile, ví dụ simd-w1 là tile vuông b x b
+//            Thêm "-w<số>" để đổi bề rộng tile, ví dụ simd-w4 là tile b x 4b
 //            (chỉ dùng cho thí nghiệm phụ scripts/experiments/tile_shape.conf).
 // --pin 1: ghim mỗi thread vào một lõi (common/affinity), cho thí nghiệm E7.
 // --verify: n <= 512 so từng phần tử với bản tham chiếu, n lớn hơn dùng Freivalds (common/verify).

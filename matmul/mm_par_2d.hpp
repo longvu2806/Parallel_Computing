@@ -3,23 +3,21 @@
 // Nhân ma trận song song OpenMP, phân hoạch 2D theo tile (việc D5).
 // Dùng chung cho matmul/mm_par_2d.cpp và tests/test_block_par.cpp.
 //
-// Chia C thành lưới tile, mỗi tile cao b hàng và rộng w = 4b cột (tile ở biên nhỏ hơn).
-// Mỗi tile là một đơn vị việc: một thread gán 0 cho tile đó rồi tính
+// Chia C thành lưới tile vuông b x b (tile ở biên nhỏ hơn), như mã mẫu trong tài liệu lý thuyết
+// (mục 6.3). Mỗi tile là một đơn vị việc: một thread gán 0 cho tile đó rồi tính
 //     for kk (block b của chiều k, tuần tự)
-//         for jj (4 block b trong bề rộng tile)
+//         for jj (các block b trong bề rộng tile; tile b x b chỉ có một)
 //             mm::block_multiply(hàng tile, kk, jj)
 // Hai tile khác nhau không ghi chung ô nào của C, nên không cần đồng bộ.
 // Vòng kk KHÔNG được song song: các kk khác nhau cùng cộng vào một tile C (race condition,
 // tài liệu lý thuyết mục 6.3).
 //
-// Vì sao tile rộng 4b mà không vuông b x b: với tile b x b, mỗi lời gọi kernel liên tiếp
-// (kk tăng) đọc b hàng MỚI của B, cách nhau 8n byte, nên mỗi lời gọi chạm b trang nhớ mới.
-// Với tile rộng 4b, bốn lời gọi liền nhau (jj tăng) đọc tiếp cùng b hàng đó, giống thứ tự
-// ii, kk, jj của bản tuần tự multiply_blocked. Đo sơ bộ trên máy Đức (n = 600, 1000, 2000;
-// b = 48; tốt nhất 3 lần, máy nhiễu): tile b x 4b thường nhanh hơn tile b x b, nhiều lần đo
-// chênh 20-40%, nhưng không phải cấu hình nào cũng vậy. Tile rộng hơn nữa (8b) hoặc vuông
-// 4b x 4b không nhanh hơn rõ, mà số tile ít đi (khó chia đều).
-// CHƯA CHỐT: chờ số liệu trên máy đo (scripts/experiments/tile_shape.conf, --variant simd-w1/w2/w4).
+// Bề rộng tile: đã thử tile rộng hơn (b x 2b, b x 4b), với giả thuyết vài lời gọi kernel liền nhau
+// đọc lại cùng b hàng của B thì đỡ chạm trang nhớ mới. Trên máy đo (thí nghiệm phụ
+// scripts/experiments/tile_shape.conf, Cường đo 23/11/2026, docs/ket_qua_tile_shape.md), b x 4b
+// nhanh hơn b x b vượt độ phân tán chỉ ở 2/18 cấu hình, nên theo quy tắc đặt trước khi đo, nhóm chọn
+// tile vuông b x b (đơn giản, đúng tài liệu lý thuyết). Vẫn đổi được bề rộng bằng --variant simd-w2,
+// simd-w4, ... (parse_tile_variant) nếu cần đo lại.
 //
 // Hai vòng ti (hàng tile), tj (cột tile) gộp bằng collapse(2) thành một danh sách tile,
 // đánh số theo hàng:
@@ -27,7 +25,7 @@
 //                      Thực chất gần với dải hàng, không phải lưới p x p (lý thuyết mục 6.4).
 //   schedule(dynamic): thread rảnh lấy tile tiếp theo (chunk 1), tự cân bằng tải khi tile biên
 //                      nhỏ hơn, hoặc khi có thread chạy chậm hơn (lõi E, tiến trình nền).
-// Số tile: n = 600, 1000, 2000 với b = 48 có 13 x 4, 21 x 6, 42 x 11 tile.
+// Số tile: n = 600, 1000, 2000 với b = 48 có 13 x 13, 21 x 21, 42 x 42 tile.
 //
 // Với mỗi C[i][j], các số hạng vẫn cộng theo k tăng dần như multiply_blocked (mm_kernel.hpp),
 // nên kết quả giống từng bit bản tuần tự cùng b, với mọi số thread, mọi schedule, mọi bề rộng tile.
@@ -52,12 +50,13 @@ inline Schedule parse_schedule(const std::string& name) {
     throw std::invalid_argument("--schedule phai la static hoac dynamic: " + name);
 }
 
-// Bề rộng tile tính bằng số block b (tile cao b, rộng kTileWidthBlocks * b).
-constexpr int kTileWidthBlocks = 4;
+// Bề rộng tile tính bằng số block b (tile cao b, rộng kTileWidthBlocks * b): 1 là tile vuông b x b
+// (chốt sau thí nghiệm tile_shape, xem đầu file).
+constexpr int kTileWidthBlocks = 1;
 
 // Biến thể của mm_par_2d (--variant): tên kernel, có thể kèm "-w<số>" để đổi bề rộng tile:
-//   simd, novec            bề rộng mặc định kTileWidthBlocks
-//   simd-w1, novec-w2, ... tile rộng 1, 2, ... block (1 đến 64); simd-w1 là tile vuông b x b
+//   simd, novec            bề rộng mặc định kTileWidthBlocks (tile b x b)
+//   simd-w2, novec-w4, ... tile rộng 2, 4, ... block (1 đến 64); simd-w1 giống simd
 // Bề rộng nằm trong tên biến thể để ghi được vào cột variant của CSV mà không đổi định dạng CSV.
 // Dùng cho thí nghiệm phụ scripts/experiments/tile_shape.conf (chọn bề rộng tile trên máy đo).
 struct TileVariant {

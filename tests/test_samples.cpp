@@ -7,6 +7,7 @@
 #include "common/matrix.hpp"
 #include "common/verify.hpp"
 #include "dot_product/dot_kernel.hpp"
+#include "matmul/mm_cannon.hpp"
 #include "matmul/mm_kernel.hpp"
 #include "matmul/mm_par_1d.hpp"
 #include "matmul/mm_par_2d.hpp"
@@ -144,8 +145,19 @@ void check_matmul(const std::string& name, const fs::path& input, const Expected
             if (!identical(C, e.C)) failed += " tile/" + tag;
         }
     }
+    // Cannon (Đức): lưới 1x1, 2x2, 3x3 với đúng q * q thread, b = 8, có và không có barrier.
+    for (int q = 1; q <= 3; ++q) {
+        omp_set_dynamic(0);
+        omp_set_num_threads(q * q);
+        for (mm::CannonSync s : {mm::CannonSync::Barrier, mm::CannonSync::NoBarrier}) {
+            C.fill(-1.0);
+            mm::multiply_cannon(A.data(), B.data(), C.data(), static_cast<int>(n), 8, q, s);
+            if (!identical(C, e.C)) failed += " cannon/" + std::to_string(q * q) + "/" + mm::cannon_sync_name(s);
+        }
+    }
     check(failed.empty(), name + " (n = " + std::to_string(n) +
-                              "): tham chieu, 6 thu tu, block b = 1/4/8/64, 1D va tile 1/4/12 thread khop dap an" +
+                              "): tham chieu, 6 thu tu, block b = 1/4/8/64, 1D va tile 1/4/12 thread, "
+                              "Cannon 1/4/9 thread khop dap an" +
                               (failed.empty() ? "" : ", sai:" + failed));
 }
 
