@@ -1,0 +1,13 @@
+== Phien chay 2026-11-28 15:04:19
+cau hinh   : scripts/experiments/c7_e1_dot.conf scripts/experiments/c7_e2_loop.conf scripts/experiments/c7_e3_block.conf scripts/experiments/c7_e4_vec.conf scripts/experiments/c7_e5_part.conf scripts/experiments/c7_e6_sched.conf scripts/experiments/c7_e7_pin.conf
+commit     : d93797c
+cpu        : Intel(R) Core(TM) i7-9850H CPU @ 2.60GHz, 12 CPU logic
+ram        : 15.7 GB
+he dieu hanh: MINGW64_NT-10.0-26200 3.6.5-0eeda3e1.x86_64 x86_64
+compiler   : g++.exe (Rev8, Built by MSYS2 project) 15.2.0
+co build/  : -std=c++17 -O3 -march=native -Wall -Wextra -fopenmp
+so lan     : 5, seed xao tron: 2026, nghi: 0s, gioi han: 0s
+bien OMP   : 
+nguon (dau): cam sac, pin 91%; power mode dang dung: Best performance (cam sac: Best performance, chay pin: Best power efficiency); power plan: Balanced
+nguon (cuoi, 2026-11-28 15:18:07): cam sac, pin 96%; power mode dang dung: Best performance (cam sac: Best performance, chay pin: Best power efficiency); power plan: Balanced
+ket qua    : 1070/1070 lan chay thanh cong trong 823s
