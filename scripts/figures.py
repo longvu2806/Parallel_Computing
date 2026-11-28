@@ -125,8 +125,10 @@ def _line(ax, x, y, color, label, lo=None, hi=None):
             markeredgewidth=1.5, label=label, solid_joinstyle="round", solid_capstyle="round")
 
 
-def _series_label(r) -> str:
+def _series_label(r, with_block: bool = False) -> str:
     parts = [str(r["program"]), str(r["variant"])]
+    if with_block:
+        parts.append(f"b={int(r['block'])}")
     if r["build"] != "default":
         parts.append(f"build {r['build']}")
     if int(r["pinned"]):
@@ -143,7 +145,9 @@ def plot_scaling(sp: pd.DataFrame, fig_dir: Path) -> list[Path]:
         if g["threads"].nunique() < 2:
             continue
         g = g.copy()
-        g["label"] = g.apply(_series_label, axis=1)
+        # Cung chuong trinh chay nhieu block size (vi du E5: b = 48 va b = 32) thi tach thanh duong rieng.
+        with_block = bool((g.groupby("program")["block"].nunique() > 1).any())
+        g["label"] = g.apply(lambda r: _series_label(r, with_block), axis=1)
         labels = sorted(g["label"].unique())
         if len(labels) > len(SERIES):
             print(f"CANH BAO: {exp} n={n}: {len(labels)} duong, qua {len(SERIES)} mau; bo qua bieu do")

@@ -124,6 +124,62 @@ cpu_name() { grep -m1 'model name' /proc/cpuinfo 2>/dev/null | sed 's/.*: //' ||
 ram_total() { awk '/MemTotal/ {printf "%.1f GB", $2 / 1048576}' /proc/meminfo 2>/dev/null || echo "?"; }
 default_cxxflags() { sed -n 's/^CXXFLAGS[[:space:]]*?=[[:space:]]*//p' Makefile; }
 
+# ------------------------------------------------------------------ trang thai nguon (Windows)
+# Trang thai nguon anh huong manh toi so do: tren may do, cung mot cau hinh co the cham hon 3 lan khi
+# chay pin hoac o che do tiet kiem (docs/ket_qua_tile_shape.md, muc 5). Ghi lai dau va cuoi moi phien,
+# canh bao neu khong cam sac hoac Power mode khong phai Best performance. Khong phai Windows thi bo qua.
+
+# Power mode cua Windows 10/11 (thanh truot trong Settings > Power & battery), luu la "overlay".
+power_mode_name() {
+    case "$1" in
+        ded574b5-45a0-4f42-8737-46345c09c238) echo "Best performance" ;;
+        3af9b8d9-7c97-431d-ad78-34a8bfea439f) echo "Better performance" ;;
+        00000000-0000-0000-0000-000000000000|"") echo "Balanced" ;;
+        961cc777-2547-4f9d-8174-7d86181b8a7a) echo "Best power efficiency" ;;
+        *) echo "khac ($1)" ;;
+    esac
+}
+
+POWER_OK=1
+POWER_SUMMARY="?"
+read_power_state() {
+    POWER_OK=1
+    if ! command -v powercfg.exe >/dev/null 2>&1; then
+        POWER_SUMMARY="khong doc duoc (khong phai Windows)"
+        return
+    fi
+    local key='HKLM\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes'
+    local plan ac_guid dc_guid status="" charge="" source mode_ac mode_dc active
+    # MSYS2_ARG_CONV_EXCL: khong cho MSYS2 doi "/getactivescheme", "/v" thanh duong dan.
+    plan="$(MSYS2_ARG_CONV_EXCL='*' powercfg.exe /getactivescheme 2>/dev/null | tr -d '\r' | sed -n 's/.*(\(.*\)).*/\1/p')"
+    ac_guid="$(MSYS2_ARG_CONV_EXCL='*' reg.exe query "$key" /v ActiveOverlayAcPowerScheme 2>/dev/null | tr -d '\r' | awk '/REG_SZ/ {print $3}')"
+    dc_guid="$(MSYS2_ARG_CONV_EXCL='*' reg.exe query "$key" /v ActiveOverlayDcPowerScheme 2>/dev/null | tr -d '\r' | awk '/REG_SZ/ {print $3}')"
+    read -r status charge < <(powershell.exe -NoProfile -Command \
+        '$b = Get-CimInstance Win32_Battery; if ($b) { "$($b.BatteryStatus) $($b.EstimatedChargeRemaining)" } else { "0 -" }' \
+        2>/dev/null | tr -d '\r') || true
+    # Win32_Battery.BatteryStatus: 1 = dang xa pin, 4/5 = pin yeu (cung dang xa); con lai = co dien ngoai.
+    case "$status" in
+        1|4|5) source="CHAY PIN (khong cam sac)"; POWER_OK=0 ;;
+        0)     source="khong co pin" ;;
+        "")    source="khong doc duoc" ;;
+        *)     source="cam sac" ;;
+    esac
+    mode_ac="$(power_mode_name "$ac_guid")"
+    mode_dc="$(power_mode_name "$dc_guid")"
+    active="$mode_ac"                       # cam sac -> che do AC, chay pin -> che do DC
+    if [[ "$source" == CHAY* ]]; then active="$mode_dc"; fi
+    if [[ "$active" != "Best performance" ]]; then POWER_OK=0; fi
+    POWER_SUMMARY="$source, pin ${charge:-?}%; power mode dang dung: $active (cam sac: $mode_ac, chay pin: $mode_dc); power plan: ${plan:-?}"
+}
+
+power_warning() {
+    if [[ $POWER_OK -eq 0 ]]; then
+        echo "CANH BAO NGUON: $POWER_SUMMARY"
+        echo "  So lieu bao cao phai do khi CAM SAC va Power mode = Best performance"
+        echo "  (Settings > System > Power & battery > Power mode)."
+    fi
+}
+
 # ------------------------------------------------------------------ --check
 
 run_check() {
@@ -135,6 +191,8 @@ run_check() {
     echo "RAM          : $(ram_total)"
     echo "Commit       : $(git_commit)"
     echo "Co mac dinh  : $(default_cxxflags)"
+    read_power_state
+    echo "Nguon        : $POWER_SUMMARY"
 
     local gxx
     gxx="$(command -v g++ || true)"
@@ -198,8 +256,10 @@ EOF
     fi
     if [[ $ok -eq 1 ]]; then
         echo "== Toolchain san sang"
+        power_warning
         return 0
     fi
+    power_warning
     echo "== Toolchain CO VAN DE, xem cac dong o tren"
     return 1
 }
@@ -364,6 +424,8 @@ fi
 # ------------------------------------------------------------------ danh sach lan chay
 
 # Ghi thong tin phien chay vao <thi nghiem>/meta.txt (moi phien them mot khoi).
+read_power_state
+power_warning
 for exp in "${!EXPERIMENTS[@]}"; do
     {
         echo "== Phien chay $(date '+%Y-%m-%d %H:%M:%S')"
@@ -377,6 +439,7 @@ for exp in "${!EXPERIMENTS[@]}"; do
         for name in "${!BUILDS[@]}"; do echo "co build/$name: ${BUILDS[$name]}"; done
         echo "so lan     : $REPS, seed xao tron: $SHUFFLE_SEED, nghi: ${PAUSE}s, gioi han: ${TIME_LIMIT}s"
         echo "bien OMP   : $(env | grep -E '^(OMP_|GOMP_)' | tr '\n' ' ')"
+        echo "nguon (dau): $POWER_SUMMARY"
     } >> "$OUT_DIR/$exp/meta.txt"
 done
 
@@ -440,6 +503,15 @@ for job in "${JOBS[@]}"; do
 done
 
 echo "== Xong: $((total - failed))/$total lan chay thanh cong trong $(( $(date +%s) - start ))s"
+# Nguon co the doi giua chung (rut sac, het pin khi chay qua dem): ghi lai luc ket thuc.
+read_power_state
+power_warning
+for exp in "${!EXPERIMENTS[@]}"; do
+    {
+        echo "nguon (cuoi, $(date '+%Y-%m-%d %H:%M:%S')): $POWER_SUMMARY"
+        echo "ket qua    : $((total - failed))/$total lan chay thanh cong trong $(( $(date +%s) - start ))s"
+    } >> "$OUT_DIR/$exp/meta.txt"
+done
 for exp in "${!EXPERIMENTS[@]}"; do
     ls "$OUT_DIR/$exp"/*.csv 2>/dev/null | sed 's/^/   ket qua: /' || true
 done
