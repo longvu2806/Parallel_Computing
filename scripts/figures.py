@@ -106,11 +106,15 @@ def _new_figure(nrows: int, ncols: int, width: float, height: float):
 
 
 def _save(fig, path: Path, title: str, subtitle: str, legend_rows: int = 0) -> Path:
+    import textwrap
+
     import matplotlib.pyplot as plt
     h = fig.get_figheight()  # inch; dat tieu de theo inch de khong chong nhau o moi chieu cao
+    lines = textwrap.wrap(subtitle, width=int(fig.get_figwidth() * 15))  # ~15 ky tu co 9 moi inch
     fig.text(0.01, 1 - 0.18 / h, title, ha="left", va="top", fontsize=12, color=TEXT, fontweight="bold")
-    fig.text(0.01, 1 - 0.45 / h, subtitle, ha="left", va="top", fontsize=9, color=TEXT_2)
-    fig.tight_layout(rect=(0, (0.1 + 0.25 * legend_rows) / h, 1, 1 - 0.7 / h))
+    fig.text(0.01, 1 - 0.45 / h, "\n".join(lines), ha="left", va="top", fontsize=9, color=TEXT_2)
+    top = 0.7 + 0.17 * (len(lines) - 1)
+    fig.tight_layout(rect=(0, (0.1 + 0.25 * legend_rows) / h, 1, 1 - top / h))
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -125,13 +129,53 @@ def _line(ax, x, y, color, label, lo=None, hi=None):
             markeredgewidth=1.5, label=label, solid_joinstyle="round", solid_capstyle="round")
 
 
-def _series_label(r) -> str:
+def _series_label(r, with_block: bool = False) -> str:
     parts = [str(r["program"]), str(r["variant"])]
+    if with_block:
+        parts.append(f"b={int(r['block'])}")
     if r["build"] != "default":
         parts.append(f"build {r['build']}")
     if int(r["pinned"]):
         parts.append("ghim")
     return " ".join(parts)
+
+
+def _plot_compare_bars(g: pd.DataFrame, labels: list[str], color: dict, exp: str, problem: str, n: int,
+                       fig_dir: Path) -> Path:
+    """Thi nghiem chi co 1-2 muc thread (vi du E4, E6, E7): cot nhom speedup, moi o mot (so thread, lich)."""
+    groups = sorted({(int(t), s) for t, s in zip(g["threads"], g["sched"])})
+    fig, axes = _new_figure(1, len(groups), max(8.0, 3.2 * len(groups)), 4.8)
+    ymax = max(float(g["speedup_hi"].max()), 1.0) * 1.18
+    for c, (p, sc) in enumerate(groups):
+        ax = axes[0][c]
+        d = g[(g["threads"] == p) & (g["sched"] == sc)].set_index("label")
+        present = [lab for lab in labels if lab in d.index]
+        x = np.arange(len(present))
+        sv = d.loc[present, "speedup"].to_numpy()
+        lo = d.loc[present, "speedup_lo"].to_numpy()
+        hi = d.loc[present, "speedup_hi"].to_numpy()
+        ax.bar(x, sv, width=0.6, color=[color[lab] for lab in present], edgecolor=SURFACE, linewidth=2)
+        ax.errorbar(x, sv, yerr=np.vstack([sv - lo, hi - sv]), fmt="none", ecolor=TEXT_2, elinewidth=1, capsize=2.5)
+        for xi, v, h in zip(x, sv, hi):
+            ax.text(xi, h + ymax * 0.01, f"{v:.2f}".replace(".", ","), ha="center", va="bottom", fontsize=8,
+                    color=TEXT)
+        ax.axhline(p, color=REF, linewidth=1)
+        ax.text(len(present) - 0.5, p, f"lý tưởng S = {p}", ha="right", va="bottom", fontsize=7, color=TEXT_2)
+        ax.set_xticks(x)
+        ax.set_xticklabels([""] * len(present))
+        ax.set_ylim(0, max(ymax, p * 1.08))
+        _style(ax, "", "Speedup S = T1 / Tp" if c == 0 else "")
+        ax.set_title(f"{p} thread, lịch {sc}", fontsize=10, color=TEXT, loc="left")
+    from matplotlib.patches import Patch
+    handles = [Patch(facecolor=color[lab], label=lab) for lab in labels]
+    ncol = min(3, len(labels))
+    fig.legend(handles=handles, loc="lower center", ncol=ncol, frameon=False, fontsize=8, labelcolor=TEXT,
+               bbox_to_anchor=(0.5, 0.0))
+    base = g["baseline"].dropna().unique()
+    sub = f"{problem}, n = {n}. Số trên cột: speedup (median). T1 = bản tuần tự nhanh nhất cùng thí nghiệm: " \
+          f"{'; '.join(base)}. Thanh lỗi: IQR của Tp."
+    return _save(fig, fig_dir / exp / f"compare_n{n}.png", f"{exp}: so sánh speedup", sub,
+                 legend_rows=-(-len(labels) // ncol))
 
 
 def plot_scaling(sp: pd.DataFrame, fig_dir: Path) -> list[Path]:
@@ -143,19 +187,24 @@ def plot_scaling(sp: pd.DataFrame, fig_dir: Path) -> list[Path]:
         if g["threads"].nunique() < 2:
             continue
         g = g.copy()
-        g["label"] = g.apply(_series_label, axis=1)
+        # Cung chuong trinh chay nhieu block size (vi du E5: b = 48 va b = 32) thi tach thanh duong rieng.
+        with_block = bool((g.groupby("program")["block"].nunique() > 1).any())
+        g["label"] = g.apply(lambda r: _series_label(r, with_block), axis=1)
         labels = sorted(g["label"].unique())
         if len(labels) > len(SERIES):
             print(f"CANH BAO: {exp} n={n}: {len(labels)} duong, qua {len(SERIES)} mau; bo qua bieu do")
             continue
         color = {lab: SERIES[i] for i, lab in enumerate(labels)}   # mau theo doi tuong, co dinh
+        if g["threads"].nunique() <= 2:
+            out.append(_plot_compare_bars(g, labels, color, exp, problem, n, fig_dir))
+            continue
         scheds = sorted(g["sched"].unique())
-        fig, axes = _new_figure(3, len(scheds), 4.6 * len(scheds), 9.6)
+        fig, axes = _new_figure(3, len(scheds), max(8.0, 4.6 * len(scheds)), 9.6)
         pmax = int(g["threads"].max())
         for c, sc in enumerate(scheds):
             gs = g[g["sched"] == sc]
             ax_s, ax_e, ax_k = axes[0][c], axes[1][c], axes[2][c]
-            ideal = np.arange(1, pmax + 1)
+            ideal = np.arange(int(g["threads"].min()), pmax + 1)
             ax_s.plot(ideal, ideal, color=REF, linewidth=1, label="lý tưởng (S = p)")
             ax_e.axhline(1.0, color=REF, linewidth=1)
             for lab in labels:
@@ -182,13 +231,14 @@ def plot_scaling(sp: pd.DataFrame, fig_dir: Path) -> list[Path]:
             kf = gs["karp_flatt"].dropna()
             if not kf.empty:
                 ax_k.set_ylim(min(0.0, float(kf.min()) * 1.15), max(0.05, float(kf.max()) * 1.15))
+            ax_e.set_xlim(ax_s.get_xlim())
             ax_k.set_xlim(ax_s.get_xlim())
             _style(ax_s, "", "Speedup S = T1 / Tp")
             _style(ax_e, "", "Efficiency E = S / p")
             _style(ax_k, "Số thread p", "Karp–Flatt e")
             ax_s.set_title(f"lịch {sc}", fontsize=10, color=TEXT, loc="left")
         handles, names = axes[0][0].get_legend_handles_labels()
-        ncol = min(4, len(names))
+        ncol = min(3, len(names))
         fig.legend(handles, names, loc="lower center", ncol=ncol, frameon=False, fontsize=8,
                    labelcolor=TEXT, bbox_to_anchor=(0.5, 0.0))
         base = g["baseline"].dropna().unique()
