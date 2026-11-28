@@ -7,7 +7,7 @@ Kho mã nguồn đồ án nhóm môn Lập trình tính toán song song, gồm h
 | Bài chung | Tính tích vô hướng của hai vector |
 | Bài riêng (Chủ đề 5) | Nhân ma trận theo khối, tối ưu locality: so sánh bản tuần tự chuẩn với bản chia block/tile, khảo sát block size, thứ tự vòng lặp, vectorization/shared memory và ít nhất hai cách phân hoạch |
 
-> **Trạng thái:** đã dựng khung kho mã và giao diện thử nghiệm (`ui/`). Các file nguồn C++ hiện là stub, chưa có thuật toán và chưa có kết quả đo.
+> **Trạng thái:** đã hoàn thành. Có đủ bản tuần tự và song song của hai bài (tích vô hướng; nhân ma trận chuẩn, chia block, song song 1D, tile 2D, Cannon), 9 chương trình kiểm thử (`make test`), số liệu thí nghiệm chính E1–E7 trong `results/raw/c7_*` và biểu đồ trong `results/figures/c7_*`.
 
 ## Công nghệ
 
@@ -42,6 +42,7 @@ parallel_computing/
 │   ├── mm_block_seq.cpp    Tuần tự chia block/tile
 │   ├── mm_par_1d.cpp       Song song, phân hoạch 1D theo hàng
 │   ├── mm_par_2d.cpp       Song song, phân hoạch 2D theo tile
+│   ├── mm_cannon.cpp       Song song, thuật toán Cannon trên lưới q x q thread
 │   └── mm_kernel.hpp       Vi nhân cho một block, có vectorization
 │
 ├── tests/                  Kiểm thử (test_*.cpp), chạy bằng make test
@@ -372,6 +373,34 @@ int main(int argc, char** argv) {
 
 Số liệu báo cáo chỉ đo bằng `scripts/run_experiments.sh` (Cường phụ trách), chạy trong **MSYS2 UCRT64** ở thư mục gốc repo.
 
+### Tái lập số liệu trong báo cáo (thí nghiệm chính C7)
+
+Mọi số liệu trong báo cáo lấy từ **một phiên đo duy nhất** chạy tất cả `scripts/experiments/c7_*.conf` (E1–E7), thứ tự các lần chạy xáo trộn chung để mọi thí nghiệm chịu cùng điều kiện máy:
+
+```bash
+# MSYS2 UCRT64, gốc repo. Trước khi chạy: cắm sạc, Power mode = Best performance, đóng ứng dụng nền.
+make && make test
+scripts/run_experiments.sh --check
+scripts/run_experiments.sh --fresh scripts/experiments/c7_*.conf    # khoảng 14 phút trên máy đo
+```
+
+```powershell
+# PowerShell, gốc repo: bảng thống kê (results/summary/) và biểu đồ (results/figures/c7_*/)
+python scripts/plot_results.py
+```
+
+| Thí nghiệm | Câu hỏi | Cấu hình |
+|---|---|---|
+| E1 | Tích vô hướng tăng tốc thế nào? | `c7_e1_dot.conf` |
+| E2 | Thứ tự vòng lặp ảnh hưởng ra sao? | `c7_e2_loop.conf` |
+| E3 | Block size nào tốt nhất? | `c7_e3_block.conf` |
+| E4 | Vectorization đóng góp bao nhiêu? | `c7_e4_vec.conf` |
+| E5 | Cách phân hoạch nào tốt hơn (1D, tile, Cannon)? | `c7_e5_part.conf` |
+| E6 | Lập lịch static hay dynamic? | `c7_e6_sched.conf` |
+| E7 | Ghim thread, barrier có ảnh hưởng không? | `c7_e7_pin.conf` |
+
+Môi trường, commit và trạng thái nguồn điện của phiên đo được ghi trong `results/raw/c7_*/meta.txt`. Số đo trên máy khác sẽ khác về giá trị tuyệt đối; điều cần tái lập là xu hướng.
+
 ```bash
 scripts/run_experiments.sh --check                                  # kiểm tra toolchain: g++, OpenMP đủ thread, make test
 scripts/run_experiments.sh --dry-run scripts/experiments/e1_dot.conf  # xem các lệnh sẽ chạy
@@ -447,16 +476,19 @@ mm_block_seq --n 1024 --b {32,64}
 
 ## Môi trường thí nghiệm
 
-Cờ tối ưu dùng cho từng thí nghiệm sẽ được ghi lại cùng kết quả đo.
+**Máy đo** (mọi số liệu báo cáo, phiên C7 ngày 28/11/2026, theo `results/raw/c7_*/meta.txt`):
 
 | Thành phần | Giá trị |
 |---|---|
-| CPU | AMD Ryzen 7 8845H, 8 lõi / 16 luồng |
-| RAM | 27,8 GB |
-| Hệ điều hành | Windows 11 Home |
-| Compiler | GCC 16.2.0 (MSYS2 UCRT64, Rev6) |
-| Build | GNU Make 4.4.1 |
-| Cờ mặc định | `-std=c++17 -O3 -march=native -Wall -Wextra -fopenmp` |
+| CPU | Intel Core i7-9850H, 6 lõi / 12 luồng; L1d 32 KiB, L2 256 KiB mỗi lõi, L3 12 MiB dùng chung |
+| RAM | 15,7 GB |
+| Hệ điều hành | Windows 11 (build 26200) |
+| Compiler | GCC 15.2.0 (MSYS2 UCRT64, Rev8) |
+| Cờ | `-std=c++17 -O3 -march=native -Wall -Wextra -fopenmp` (E4 so sánh vector hóa bằng biến thể `--variant novec` của kernel, cùng bản build) |
+| Nguồn điện | Cắm sạc, Power mode = Best performance |
+| Lặp | 5 lần mỗi cấu hình, thứ tự xáo trộn (seed 2026); 1070/1070 lần chạy thành công |
+
+**Máy phát triển và kiểm thử** (không dùng để đo): AMD Ryzen 7 8845H, 8 lõi / 16 luồng, 27,8 GB RAM, GCC 16.2.0 (MSYS2 UCRT64, Rev6), GNU Make 4.4.1.
 
 ## Thư viện và mã nguồn ngoài
 
